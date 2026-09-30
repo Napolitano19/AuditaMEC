@@ -64,41 +64,25 @@ def calcular_sha256(caminho_arquivo):
         print(f"Erro ao calcular SHA-256: {e}")
         return "N/A"
 
-
 def analisar_modo_cor_real(pixmap):
     """
     Analisa a imagem extraída do PDF usando matrizes NumPy.
     Determina: 'Monocromático', 'Escala de Cinza' ou 'Colorido'.
     """
     try:
-        # 1. Se o espaço de cor nativo for de 1 canal (Grayscale nativo)
         if pixmap.colorspace and pixmap.colorspace.n == 1:
             return "Escala de Cinza"
 
-        # Converte o pixmap para imagem PIL
         img_pil = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
-        
-        # Redimensiona para 500x500 para preservar traços finos de caneta
         img_thumb = img_pil.resize((500, 500))
-        
-        # Converte para matriz NumPy (3D: Altura x Largura x RGB)
         img_np = np.array(img_thumb, dtype=np.int16)
         
-        # Calcula a variação de cor (Máximo - Mínimo) entre R, G, B de cada pixel
-        # Em tons de cinzento/sombra, R, G e B são quase iguais (diferença ~ 0)
-        # Em caneta azul ou carimbos, a diferença entre canais é alta
         variacao_cor = np.ptp(img_np, axis=2)
-        
-        # Considera um pixel colorido se a diferença entre canais for superior a 28
         pixels_coloridos = np.sum(variacao_cor > 28)
 
-        # Numa miniatura de 500x500 (250.000 píxeis no total):
-        # Um único risco curto de caneta ocupa entre 30 e 70 píxeis.
-        # Definimos o limite em 30 píxeis para capturar até os menores rabiscos.
         if pixels_coloridos >= 30:
             return "Colorido"
 
-        # Se não houver píxeis coloridos suficientes, diferencia P&B de Escala de Cinza
         stat_gray = ImageStat.Stat(img_thumb.convert('L'))
         if stat_gray.stddev[0] > 105:
             return "Monocromático"
@@ -110,69 +94,86 @@ def analisar_modo_cor_real(pixmap):
         return "Colorido"
 
 # ==============================================================================
-# FUNÇÃO PARA AUDITAR OS METADADOS
+# FUNÇÃO PARA AUDITAR OS METADADOS (ANEXO II - PARTE A)
 # ==============================================================================
-def auditar_metadados_com_metodologia(caminho_pdf, dpi_encontrado, modo_cor):
+def auditar_metadados_com_metodologia(caminho_pdf):
     """
-    Realiza a auditoria dos metadados nativos do PDF e mapeia a metodologia
-    de obtenção para a página final do laudo do Decreto nº 10.278/2020.
+    Audita estritamente os 8 metadados do Anexo II (Parte A) do Decreto 10.278/2020.
+    Retorna apenas o que estiver fisicamente presente no PDF e calcula o Hash SHA-256.
     """
     doc = fitz.open(caminho_pdf)
-    meta_nativo = doc.metadata
+    meta = doc.metadata or {}
     doc.close()
 
-    titulo_atual = meta_nativo.get("title", "")
-    if titulo_atual is None: titulo_atual = ""
-    titulo_atual = titulo_atual.strip()
+    # 1. Assunto (Nativo: keywords ou subject)
+    assunto_nativo = meta.get('keywords') or meta.get('subject')
+    val_assunto = assunto_nativo.strip() if assunto_nativo and assunto_nativo.strip() else "Ausente"
+    parecer_assunto = "✅ CONFORME" if val_assunto != "Ausente" else "⚠️ AVISO: Não localizado nas propriedades nativas do PDF."
 
-    autor_atual = meta_nativo.get("author", "")
-    if autor_atual is None: autor_atual = ""
-    autor_atual = autor_atual.strip()
+    # 2. Autor (nome) (Nativo: author)
+    autor_nativo = meta.get('author', '').strip()
+    if not autor_nativo:
+        val_autor = "Ausente"
+        parecer_autor = "⚠️ AVISO: Propriedade 'author' ausente no PDF."
+    else:
+        val_autor = autor_nativo
+        genericos = ['admin', 'administrator', 'user', 'usuario', 'kawan', 'print', 'microsoft']
+        if any(g in autor_nativo.lower() for g in genericos):
+            parecer_autor = f"⚠️ AVISO: Presente ({autor_nativo}), mas refere-se a conta/usuário local de sistema e não à IES emissora."
+        else:
+            parecer_autor = "✅ CONFORME"
 
-    # Trata a validação de DPI caso o documento seja Nato-Digital (Vetor)
-    status_dpi = "CONFORME"
-    if isinstance(dpi_encontrado, int) and dpi_encontrado < 300:
-        status_dpi = "REPROVADO"
-    elif dpi_encontrado != "Nativo (Vetor)" and str(dpi_encontrado).isdigit() and int(dpi_encontrado) < 300:
-        status_dpi = "REPROVADO"
+    # 3. Data e local da digitalização
+    data_bruta = meta.get('creationDate') or meta.get('modDate')
+    data_formatada = "Ausente"
+    if data_bruta:
+        clean_str = re.sub(r'^[DF]:', '', str(data_bruta))
+        match = re.match(r'(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})', clean_str)
+        if match:
+            ano, mes, dia, hora, minuto, segundo = match.groups()
+            data_formatada = f"{dia}/{mes}/{ano} {hora}:{minuto}:{segundo}"
+        else:
+            data_formatada = str(data_bruta)
 
-    relatorio_metadados = {
-        "auditoria": {
-            "Título do Documento": {
-                "valor": titulo_atual if titulo_atual else os.path.basename(caminho_pdf),
-                "status": "CONFORME" if titulo_atual and not titulo_atual.lower().startswith("scan") else "AVISO",
-                "metodologia": "Lido diretamente da propriedade interna 'title' do arquivo PDF ou do nome de registro no sistema de arquivos."
-            },
-            "Autor / Emissor": {
-                "valor": autor_atual if autor_atual else "Não Identificado",
-                "status": "CONFORME" if autor_atual else "AVISO",
-                "metodologia": "Extraído da propriedade 'author' gravada no container de metadados do documento digital."
-            },
-            "Hash (Checksum) SHA-256": {
-                "valor": "Calculado na execução",
-                "status": "CONFORME",
-                "metodologia": "Calculado via algoritmo de hash criptográfico SHA-256 sobre a sequência de bytes brutos do arquivo PDF para assegurar a integridade e imutabilidade."
-            },
-            "Resolução (DPI)": {
-                "valor": f"{dpi_encontrado} DPI" if str(dpi_encontrado).isdigit() else dpi_encontrado,
-                "status": status_dpi,
-                "metodologia": "Identificado através da relação matemática entre as dimensões em píxeis da imagem interna e o tamanho físico da página em polegadas via biblioteca PyMuPDF."
-            },
-            "Modo de Cor Real": {
-                "valor": modo_cor,
-                "status": "CONFORME",
-                "metodologia": "Avaliado por visão computacional via matrizes NumPy, analisando a variação estatística de amplitude entre os canais de cor e a contagem de píxeis coloridos."
-            },
-            "Identificador Único (UUID)": {
-                "valor": "Pendente de Atribuição (Unimestre)",
-                "status": "INFO",
-                "metodologia": "Reservado para atribuição de ID de chave primária/UUID pelo sistema de Acervo Digital (Unimestre) no momento do armazenamento definitivo."
-            }
-        }
-    }
-    return relatorio_metadados
+    val_data_local = f"Data/Hora: {data_formatada} | Local: Ausente"
+    parecer_data_local = "⚠️ AVISO: Data extraída do cabeçalho. O container do PDF não armazena geolocalização/local."
 
+    # 4. Identificador do documento digital
+    val_id = "Ausente"
+    parecer_id = "ℹ️ INFO: Identificador único de responsabilidade do sistema de acervo (Unimestre) no ato do arquivamento."
 
+    # 5. Responsável pela digitalização
+    val_resp = "Ausente"
+    parecer_resp = "⚠️ AVISO: Responsável legal/operador não registrado no PDF. Requer identificação no envio ao Unimestre."
+
+    # 6. Título
+    titulo_nativo = meta.get('title', '').strip()
+    if titulo_nativo:
+        val_titulo = titulo_nativo
+        parecer_titulo = "✅ CONFORME"
+    else:
+        nome_arquivo = os.path.basename(caminho_pdf)
+        val_titulo = f"{nome_arquivo} (Título Atribuído)"
+        parecer_titulo = "⚠️ AVISO: Propriedade 'title' nativa ausente. Utilizado o nome do arquivo."
+
+    # 7. Tipo documental
+    val_tipo = "Ausente"
+    parecer_tipo = "⚠️ AVISO: Tipo documental não gravado na estrutura do PDF. Requer atribuição via taxonomia no Unimestre."
+
+    # 8. Hash (checksum) da imagem
+    val_hash = calcular_sha256(caminho_pdf)
+    parecer_hash = "✅ CONFORME: Algoritmo SHA-256 calculado sobre os bytes brutos do arquivo."
+
+    return [
+        {"campo": "Assunto", "valor": val_assunto, "parecer": parecer_assunto},
+        {"campo": "Autor (nome)", "valor": val_autor, "parecer": parecer_autor},
+        {"campo": "Data e local da digitalização", "valor": val_data_local, "parecer": parecer_data_local},
+        {"campo": "Identificador do documento digital", "valor": val_id, "parecer": parecer_id},
+        {"campo": "Responsável pela digitalização", "valor": val_resp, "parecer": parecer_resp},
+        {"campo": "Título", "valor": val_titulo, "parecer": parecer_titulo},
+        {"campo": "Tipo documental", "valor": val_tipo, "parecer": parecer_tipo},
+        {"campo": "Hash (checksum) da imagem", "valor": val_hash, "parecer": parecer_hash},
+    ]
 
 # ==============================================================================
 # CLASSE DE LÓGICA DA APLICAÇÃO (API PYWEBVIEW)
@@ -260,7 +261,6 @@ class ApiValidador:
                         if dpi_efetivo < dpi_minimo_encontrado and dpi_efetivo > 0:
                             dpi_minimo_encontrado = dpi_efetivo
 
-                        # Análise precisa do modo de cor
                         cor_img = analisar_modo_cor_real(pix)
                         if cor_img == "Colorido":
                             modo_cor_final = "Colorido"
@@ -314,16 +314,16 @@ class ApiValidador:
                 if "CAMSCANNER" in txt_lower or "CAMSCANNER" in autor or "CAMSCANNER" in criador:
                     erros.append("Marca d'água / aplicativo de terceiro detectado ('CAMSCANNER'). Fundamento Legal: Art. 4º do Decreto nº 10.278/2020.")
 
-                if auditar_softwares:
-                    software_usado = str(metadados_exif.get("Software", "")).upper() or str(metadados_exif.get("Producer", "")).upper()
-                    for sw in softwares_suspeitos:
-                        if sw in software_usado:
-                            erros.append(f"Uso de editor gráfico/software não autorizado detectado ({sw}). Fundamento Legal: Art. 4º do Decreto nº 10.278/2020.")
+                # Verificação OBRIGATÓRIA de Softwares de Edição Gráfica
+                software_usado = (str(metadados_exif.get("Software", "")) + " " + str(metadados_exif.get("Producer", ""))).upper()
+                for sw in softwares_suspeitos:
+                    if sw in software_usado:
+                        erros.append(f"Uso de editor gráfico/software não autorizado detectado ({sw}). Fundamento Legal: Art. 4º do Decreto nº 10.278/2020.")
 
                 doc.close()
 
-                # --- NOVO: Chama a auditoria de metadados antes de salvar os resultados ---
-                metadados_metodologia = auditar_metadados_com_metodologia(caminho, dpi_final_str, modo_cor_final)
+                # Auditoria dos 8 metadados do Anexo II
+                matriz_anexo_ii = auditar_metadados_com_metodologia(caminho)
 
                 resultados.append({
                     "nome": nome_arquivo,
@@ -338,10 +338,7 @@ class ApiValidador:
                     "hash_sha256": hash_sha256,
                     "aprovado": len(erros) == 0,
                     "erros": erros,
-                    "metadados": {
-                        "meta_completo": metadados_exif,
-                        "metodologia": metadados_metodologia["auditoria"] # Injetamos a metodologia aqui
-                    }
+                    "matriz_anexo_ii": matriz_anexo_ii
                 })
 
             except Exception as e:
@@ -358,7 +355,7 @@ class ApiValidador:
                     "hash_sha256": hash_sha256,
                     "aprovado": False,
                     "erros": [f"Falha ao processar o ficheiro PDF: {str(e)}"],
-                    "metadados": {}
+                    "matriz_anexo_ii": []
                 })
 
         return resultados
@@ -401,7 +398,6 @@ class ApiValidador:
             cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontSize=7, leading=9, textColor=COR_TEXTO)
             cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=7, leading=9, fontName="Helvetica-Bold", textColor=COR_TEXTO)
             cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=7, leading=9, fontName="Helvetica-Bold", textColor=colors.white)
-            error_style = ParagraphStyle('ErrorStyle', parent=styles['Normal'], fontSize=7, leading=9, textColor=COR_VERMELHO)
 
             data_hora = datetime.datetime.now().strftime("%d/%m/%Y às %H:%M:%S")
             story.append(Paragraph("LAUDO TÉCNICO DE CONFORMIDADE REGULATÓRIA - MEC", title_style))
@@ -423,111 +419,65 @@ class ApiValidador:
                 ('PADDING', (0, 0), (-1, -1), 4),
             ]))
             story.append(t_summary)
-            story.append(Spacer(1, 8))
 
-            # Tabela de Resultados Técnicos
-            table_data = [[
-                Paragraph("Documento / Origem", cell_header),
-                Paragraph("DPI", cell_header),
-                Paragraph("Modo de Cor", cell_header),
-                Paragraph("Resultado", cell_header),
-                Paragraph("Parecer Técnico & Enquadramento Legal", cell_header)
-            ]]
-
-            for r in resultados:
-                status_txt = "<font color='#2f855a'><b>APROVADO</b></font>" if r['aprovado'] else "<font color='#D33833'><b>REPROVADO</b></font>"
-                cor_txt = r.get('modo_cor', 'N/A')
-                detalhe_parecer = "<font color='#2f855a'>Conforme padrões técnicos de fidelidade e integridade.</font>"
-                if r['erros']:
-                    detalhe_parecer = "<br/>".join([f"• {e}" for e in r['erros']])
-
-                doc_info = f"<b>{r['nome']}</b><br/><font color='#64748B'>{r['origem']} • {r['tipo_doc']}</font>"
-
-                table_data.append([
-                    Paragraph(doc_info, cell_style),
-                    Paragraph(str(r['dpi']), cell_style),
-                    Paragraph(cor_txt, cell_style),
-                    Paragraph(status_txt, cell_style),
-                    Paragraph(detalhe_parecer, error_style if not r['aprovado'] else cell_style)
-                ])
-
-            t_details = Table(table_data, colWidths=[140, 40, 60, 60, 256])
-            estilo_tabela = [
-                ('BACKGROUND', (0, 0), (-1, 0), COR_BORDO),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('PADDING', (0, 0), (-1, -1), 4),
-                ('ALIGN', (1, 1), (2, -1), 'CENTER'),
-                ('ALIGN', (3, 1), (3, -1), 'CENTER'),
-            ]
-
-            for i in range(1, len(table_data)):
-                if i % 2 == 0:
-                    estilo_tabela.append(('BACKGROUND', (0, i), (-1, i), COR_FUNDO_ALT))
-
-            t_details.setStyle(TableStyle(estilo_tabela))
-            story.append(t_details)
-
+            # Tabela da Matriz Complementar do Anexo II (Parte A)
             story.append(Spacer(1, 10))
             story.append(Paragraph("Anexo II (Decreto nº 10.278/2020) - Matriz Complementar de Metadados", sub_title))
 
             for r in resultados:
-                if r.get("metadados") and r["metadados"].get("meta_completo"):
-                    meta = r["metadados"]["meta_completo"]
-                    
+                if r.get("matriz_anexo_ii"):
                     rows_meta = [
-                        [Paragraph("Metadado Exigido (Anexo II)", cell_header), Paragraph("Valor Registrado / Atribuído", cell_header)],
-                        [Paragraph("Hash (SHA-256)", cell_bold), Paragraph(r.get("hash_sha256", "N/A"), cell_style)],
-                        [Paragraph("Tipo Documental", cell_bold), Paragraph(r['tipo_doc'], cell_style)],
-                        [Paragraph("Título / Assunto", cell_bold), Paragraph(r['nome'], cell_style)],
-                        [Paragraph("Autor (Emissor)", cell_bold), Paragraph(limpar_string_metadado(meta.get("Author")), cell_style)],
-                        [Paragraph("Data/Local da Digitalização", cell_bold), Paragraph(limpar_string_metadado(meta.get("CreateDate")), cell_style)],
-                        [Paragraph("Responsável / Sistema", cell_bold), Paragraph("Instituição de Ensino Superior (IES)", cell_style)],
-                        [Paragraph("Gerador / Software", cell_bold), Paragraph(limpar_string_metadado(meta.get("Software") or meta.get("Producer")), cell_style)],
-                        [Paragraph("Destinação e Temporariedade (Parte B)", cell_bold), Paragraph("Guarda Permanente / Portaria MEC nº 1.224/2013", cell_style)],
+                        [Paragraph("Metadado Exigido (Anexo II - Parte A)", cell_header), 
+                         Paragraph("Valor Registrado / Atribuído", cell_header), 
+                         Paragraph("Parecer da Auditoria", cell_header)]
                     ]
+                    
+                    for item in r["matriz_anexo_ii"]:
+                        rows_meta.append([
+                            Paragraph(f"<b>{item['campo']}</b>", cell_bold),
+                            Paragraph(item['valor'], cell_style),
+                            Paragraph(item['parecer'], cell_style)
+                        ])
 
                     story.append(Spacer(1, 4))
                     story.append(Paragraph(f"<b>Arquivo: {r['nome']}</b>", cell_style))
                     story.append(Spacer(1, 2))
                     
-                    t_meta = Table(rows_meta, colWidths=[160, 396])
+                    t_meta = Table(rows_meta, colWidths=[130, 190, 236])
                     t_meta.setStyle(TableStyle([
                         ('BACKGROUND', (0, 0), (-1, 0), COR_BORDO),
                         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
-                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                         ('PADDING', (0, 0), (-1, -1), 3),
                     ]))
                     story.append(t_meta)
 
-            # --- NOVO: Quebra de página e Tabela de Metodologia Técnica ---
+            # Apêndice Técnico - Nota Metodológica
             story.append(PageBreak())
             story.append(Paragraph("APÊNDICE TÉCNICO - NOTA METODOLÓGICA", title_style))
-            story.append(Paragraph("Detalhamento da metodologia de obtenção, extração e cálculo dos metadados estruturados exigidos pelo Anexo II do Decreto nº 10.278/2020.", sub_style))
-            story.append(Spacer(1, 10))
+            story.append(Paragraph("Detalhamento da metodologia de extração e validação dos metadados estruturados exigidos pelo Anexo II do Decreto nº 10.278/2020.", sub_style))
+            story.append(Spacer(1, 8))
 
-            metodologia_data = [
-                [Paragraph("Metadado Oficial do Anexo II", cell_header), Paragraph("Origem Sistêmica & Metodologia de Obtenção", cell_header)]
+            nota_metodologica_data = [
+                [Paragraph("Metadado Exigido", cell_header), Paragraph("Origem Sistêmica & Metodologia de Obtenção / Auditoria", cell_header)],
+                [Paragraph("<b>Assunto</b>", cell_bold), Paragraph("Inspecionado nativamente nas propriedades 'keywords' e 'subject' do PDF. Se ausente, é reportado como 'Ausente'.", cell_style)],
+                [Paragraph("<b>Autor (nome)</b>", cell_bold), Paragraph("Lido da propriedade nativa 'author'. Notifica aviso se for detectado nome genérico/usuário de máquina local.", cell_style)],
+                [Paragraph("<b>Data/Local da digitalização</b>", cell_bold), Paragraph("Data/hora extraídas do campo 'creationDate' e convertidas para DD/MM/AAAA. Local indicado como 'Ausente' (não mantido em PDF físico).", cell_style)],
+                [Paragraph("<b>Identificador do documento</b>", cell_bold), Paragraph("Atribuição reservada ao sistema de negócios (Unimestre) via UUID no banco de dados.", cell_style)],
+                [Paragraph("<b>Responsável pela digitalização</b>", cell_bold), Paragraph("Indicação de operador/unidade a ser vinculada no momento do envio ao Unimestre.", cell_style)],
+                [Paragraph("<b>Título</b>", cell_bold), Paragraph("Lido do campo nativo 'title'. Se ausente, adota-se o nome do arquivo como Título Atribuído.", cell_style)],
+                [Paragraph("<b>Tipo documental</b>", cell_bold), Paragraph("Atribuído via taxonomia de catálogo do Unimestre após recepção.", cell_style)],
+                [Paragraph("<b>Hash (checksum) da imagem</b>", cell_bold), Paragraph("Calculado via algoritmo criptográfico SHA-256 diretamente sobre os bytes do arquivo.", cell_style)],
             ]
-            
-            # Pega as descrições padronizadas do primeiro resultado analisado
-            if resultados and "metodologia" in resultados[0].get("metadados", {}):
-                dict_metodologia = resultados[0]["metadados"]["metodologia"]
-                for chave, info in dict_metodologia.items():
-                    metodologia_data.append([
-                        Paragraph(f"<b>{chave}</b>", cell_bold),
-                        Paragraph(info["metodologia"], cell_style)
-                    ])
 
-            t_metodologia = Table(metodologia_data, colWidths=[130, 426])
-            t_metodologia.setStyle(TableStyle([
+            t_nota = Table(nota_metodologica_data, colWidths=[140, 416])
+            t_nota.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), COR_BORDO),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('PADDING', (0, 0), (-1, -1), 5),
+                ('PADDING', (0, 0), (-1, -1), 4),
             ]))
-            story.append(t_metodologia)
-            # --- FIM DO NOVO BLOCO ---
+            story.append(t_nota)
 
             doc.build(story)
             return True
