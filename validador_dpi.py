@@ -244,10 +244,20 @@ class ApiValidador:
             return []
 
     def _extrair_metadados_exiftool(self, caminho_pdf):
-        """Extrai metadados completos do PDF utilizando o ExifTool."""
+        """Extrai metadados completos do PDF utilizando o ExifTool de forma silenciosa."""
         try:
             cmd = [EXIFTOOL_LOCAL, "-j", caminho_pdf]
-            resultado = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
+            # Oculta a janela de terminal no Windows durante a execução do processo filho
+            creation_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            
+            resultado = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                check=True, 
+                creationflags=creation_flags
+            )
             dados = json.loads(resultado.stdout)
             if dados and isinstance(dados, list):
                 return dados[0]
