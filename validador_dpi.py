@@ -97,6 +97,9 @@ def analisar_modo_cor_real(pixmap):
 # ==============================================================================
 # FUNÇÃO PARA AUDITAR OS METADADOS (ANEXO II - PARTES A e B)
 # ==============================================================================
+# ==============================================================================
+# FUNÇÃO PARA AUDITAR OS METADADOS (ANEXO II - PARTES A e B)
+# ==============================================================================
 def auditar_metadados_com_metodologia(caminho_pdf):
     """
     Audita os metadados do Anexo II (Partes A e B) do Decreto nº 10.278/2020.
@@ -107,26 +110,31 @@ def auditar_metadados_com_metodologia(caminho_pdf):
     meta = doc.metadata or {}
     doc.close()
 
+    # Formatação compatível com o ReportLab para substituir emojis
+    TAG_CONFORME = "<font color='#15803D'><b>[CONFORME]</b></font>"
+    TAG_AVISO = "<font color='#B45309'><b>[AVISO]</b></font>"
+    TAG_INFO = "<font color='#1D4ED8'><b>[INFO]</b></font>"
+
     # -------------------------------------------------------------------------
     # ANEXO II - PARTE A (GERAL)
     # -------------------------------------------------------------------------
     # 1. Assunto
     assunto_nativo = meta.get('keywords') or meta.get('subject')
     val_assunto = assunto_nativo.strip() if assunto_nativo and assunto_nativo.strip() else "Ausente"
-    parecer_assunto = "✅ CONFORME" if val_assunto != "Ausente" else "⚠️ AVISO: Não localizado nas propriedades nativas do PDF."
+    parecer_assunto = f"{TAG_CONFORME}" if val_assunto != "Ausente" else f"{TAG_AVISO}: Não localizado nas propriedades nativas do PDF."
 
     # 2. Autor (nome)
     autor_nativo = meta.get('author', '').strip()
     if not autor_nativo:
         val_autor = "Ausente"
-        parecer_autor = "⚠️ AVISO: Propriedade 'author' ausente no PDF."
+        parecer_autor = f"{TAG_AVISO}: Propriedade 'author' ausente no PDF."
     else:
         val_autor = autor_nativo
         genericos = ['admin', 'administrator', 'user', 'usuario', 'kawan', 'print', 'microsoft']
         if any(g in autor_nativo.lower() for g in genericos):
-            parecer_autor = f"⚠️ AVISO: Presente ({autor_nativo}), mas refere-se a conta/usuário local de sistema e não à IES emissora."
+            parecer_autor = f"{TAG_AVISO}: Presente ({autor_nativo}), mas refere-se a conta/usuário local de sistema e não à IES emissora."
         else:
-            parecer_autor = "✅ CONFORME"
+            parecer_autor = f"{TAG_CONFORME}"
 
     # 3. Data e local da digitalização
     data_bruta = meta.get('creationDate') or meta.get('modDate')
@@ -141,56 +149,56 @@ def auditar_metadados_com_metodologia(caminho_pdf):
             data_formatada = str(data_bruta)
 
     val_data_local = f"Data/Hora: {data_formatada} | Local: Ausente"
-    parecer_data_local = "⚠️ AVISO: Data extraída do cabeçalho. O container do PDF não armazena geolocalização/local."
+    parecer_data_local = f"{TAG_AVISO}: Data extraída do cabeçalho. O container do PDF não armazena geolocalização/local."
 
     # 4. Identificador do documento digital
     val_id = "Ausente"
-    parecer_id = "ℹ️ INFO: Identificador único de responsabilidade do sistema de acervo (Unimestre) no ato do arquivamento."
+    parecer_id = f"{TAG_INFO}: Identificador único de responsabilidade do sistema de acervo (Unimestre) no ato do arquivamento."
 
     # 5. Responsável pela digitalização
     val_resp = "Ausente"
-    parecer_resp = "⚠️ AVISO: Responsável legal/operador não registrado no PDF. Requer identificação no envio ao Unimestre."
+    parecer_resp = f"{TAG_AVISO}: Responsável legal/operador não registrado no PDF. Requer identificação no envio ao Unimestre."
 
     # 6. Título
     titulo_nativo = meta.get('title', '').strip()
     if titulo_nativo:
         val_titulo = titulo_nativo
-        parecer_titulo = "✅ CONFORME"
+        parecer_titulo = f"{TAG_CONFORME}"
     else:
         nome_arquivo = os.path.basename(caminho_pdf)
         val_titulo = f"{nome_arquivo} (Título Atribuído)"
-        parecer_titulo = "⚠️ AVISO: Propriedade 'title' nativa ausente. Utilizado o nome do arquivo."
+        parecer_titulo = f"{TAG_AVISO}: Propriedade 'title' nativa ausente. Utilizado o nome do arquivo."
 
     # 7. Tipo documental
     val_tipo = "Ausente"
-    parecer_tipo = "⚠️ AVISO: Tipo documental não gravado na estrutura do PDF. Requer atribuição via taxonomia no Unimestre."
+    parecer_tipo = f"{TAG_AVISO}: Tipo documental não gravado na estrutura do PDF. Requer atribuição via taxonomia no Unimestre."
 
     # 8. Hash (checksum) da imagem
     val_hash = calcular_sha256(caminho_pdf)
-    parecer_hash = "✅ CONFORME: Algoritmo SHA-256 calculado sobre os bytes brutos do arquivo."
+    parecer_hash = f"{TAG_CONFORME}: Algoritmo SHA-256 calculated sobre os bytes brutos do arquivo."
 
     # -------------------------------------------------------------------------
     # ANEXO II - PARTE B (DIREITO PÚBLICO / MEC)
     # -------------------------------------------------------------------------
     # 9. Classe
     val_classe = "Ausente"
-    parecer_classe = "⚠️ AVISO: Não gravado no PDF. Requer classificação no plano de documentos do Unimestre."
+    parecer_classe = f"{TAG_AVISO}: Não gravado no PDF. Requer classificação no plano de documentos do Unimestre."
 
     # 10. Data de produção (do documento original)
     val_data_prod = "Ausente"
-    parecer_data_prod = "⚠️ AVISO: Refere-se à data do físico original. Requer indexação no envio ao acervo."
+    parecer_data_prod = f"{TAG_AVISO}: Refere-se à data do físico original. Requer indexação no envio ao acervo."
 
     # 11. Destinação prevista
     val_destinacao = "Ausente"
-    parecer_destinacao = "⚠️ AVISO: Requer definição de guarda permanente ou eliminação via Tabela de Temporalidade."
+    parecer_destinacao = f"{TAG_AVISO}: Requer definição de guarda permanente ou eliminação via Tabela de Temporalidade."
 
     # 12. Gênero
     val_genero = "Ausente"
-    parecer_genero = "⚠️️ AVISO: Requer atribuição de gênero documental (ex: Textual) na taxonomia do Unimestre."
+    parecer_genero = f"{TAG_AVISO}: Requer atribuição de gênero documental (ex: Textual) na taxonomia do Unimestre."
 
     # 13. Prazo de guarda
     val_prazo = "Ausente"
-    parecer_prazo = "⚠️ AVISO: Prazo legal a ser parametrizado no módulo de temporalidade do Unimestre."
+    parecer_prazo = f"{TAG_AVISO}: Prazo legal a ser parametrizado no módulo de temporalidade do Unimestre."
 
     return [
         # Registros Parte A
