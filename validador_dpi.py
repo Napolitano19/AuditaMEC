@@ -95,23 +95,27 @@ def analisar_modo_cor_real(pixmap):
         return "Colorido"
 
 # ==============================================================================
-# FUNÇÃO PARA AUDITAR OS METADADOS (ANEXO II - PARTE A)
+# FUNÇÃO PARA AUDITAR OS METADADOS (ANEXO II - PARTES A e B)
 # ==============================================================================
 def auditar_metadados_com_metodologia(caminho_pdf):
     """
-    Audita estritamente os 8 metadados do Anexo II (Parte A) do Decreto 10.278/2020.
-    Retorna apenas o que estiver fisicamente presente no PDF e calcula o Hash SHA-256.
+    Audita os metadados do Anexo II (Partes A e B) do Decreto nº 10.278/2020.
+    - Parte A: Requisitos gerais para todos os documentos digitalizados.
+    - Parte B: Requisitos adicionais obrigatórios para entidades públicas / regulação MEC.
     """
     doc = fitz.open(caminho_pdf)
     meta = doc.metadata or {}
     doc.close()
 
-    # 1. Assunto (Nativo: keywords ou subject)
+    # -------------------------------------------------------------------------
+    # ANEXO II - PARTE A (GERAL)
+    # -------------------------------------------------------------------------
+    # 1. Assunto
     assunto_nativo = meta.get('keywords') or meta.get('subject')
     val_assunto = assunto_nativo.strip() if assunto_nativo and assunto_nativo.strip() else "Ausente"
     parecer_assunto = "✅ CONFORME" if val_assunto != "Ausente" else "⚠️ AVISO: Não localizado nas propriedades nativas do PDF."
 
-    # 2. Autor (nome) (Nativo: author)
+    # 2. Autor (nome)
     autor_nativo = meta.get('author', '').strip()
     if not autor_nativo:
         val_autor = "Ausente"
@@ -159,21 +163,52 @@ def auditar_metadados_com_metodologia(caminho_pdf):
 
     # 7. Tipo documental
     val_tipo = "Ausente"
-    parecer_tipo = "⚠️️ AVISO: Tipo documental não gravado na estrutura do PDF. Requer atribuição via taxonomia no Unimestre."
+    parecer_tipo = "⚠️ AVISO: Tipo documental não gravado na estrutura do PDF. Requer atribuição via taxonomia no Unimestre."
 
     # 8. Hash (checksum) da imagem
     val_hash = calcular_sha256(caminho_pdf)
-    parecer_hash = "✅ CONFORME: Algoritmo SHA-256 calculated sobre os bytes brutos do arquivo."
+    parecer_hash = "✅ CONFORME: Algoritmo SHA-256 calculado sobre os bytes brutos do arquivo."
+
+    # -------------------------------------------------------------------------
+    # ANEXO II - PARTE B (DIREITO PÚBLICO / MEC)
+    # -------------------------------------------------------------------------
+    # 9. Classe
+    val_classe = "Ausente"
+    parecer_classe = "⚠️ AVISO: Não gravado no PDF. Requer classificação no plano de documentos do Unimestre."
+
+    # 10. Data de produção (do documento original)
+    val_data_prod = "Ausente"
+    parecer_data_prod = "⚠️ AVISO: Refere-se à data do físico original. Requer indexação no envio ao acervo."
+
+    # 11. Destinação prevista
+    val_destinacao = "Ausente"
+    parecer_destinacao = "⚠️ AVISO: Requer definição de guarda permanente ou eliminação via Tabela de Temporalidade."
+
+    # 12. Gênero
+    val_genero = "Ausente"
+    parecer_genero = "⚠️️ AVISO: Requer atribuição de gênero documental (ex: Textual) na taxonomia do Unimestre."
+
+    # 13. Prazo de guarda
+    val_prazo = "Ausente"
+    parecer_prazo = "⚠️ AVISO: Prazo legal a ser parametrizado no módulo de temporalidade do Unimestre."
 
     return [
-        {"campo": "Assunto", "valor": val_assunto, "parecer": parecer_assunto},
-        {"campo": "Autor (nome)", "valor": val_autor, "parecer": parecer_autor},
-        {"campo": "Data e local da digitalização", "valor": val_data_local, "parecer": parecer_data_local},
-        {"campo": "Identificador do documento digital", "valor": val_id, "parecer": parecer_id},
-        {"campo": "Responsável pela digitalização", "valor": val_resp, "parecer": parecer_resp},
-        {"campo": "Título", "valor": val_titulo, "parecer": parecer_titulo},
-        {"campo": "Tipo documental", "valor": val_tipo, "parecer": parecer_tipo},
-        {"campo": "Hash (checksum) da imagem", "valor": val_hash, "parecer": parecer_hash},
+        # Registros Parte A
+        {"parte": "Parte A", "campo": "Assunto", "valor": val_assunto, "parecer": parecer_assunto},
+        {"parte": "Parte A", "campo": "Autor (nome)", "valor": val_autor, "parecer": parecer_autor},
+        {"parte": "Parte A", "campo": "Data e local da digitalização", "valor": val_data_local, "parecer": parecer_data_local},
+        {"parte": "Parte A", "campo": "Identificador do documento digital", "valor": val_id, "parecer": parecer_id},
+        {"parte": "Parte A", "campo": "Responsável pela digitalização", "valor": val_resp, "parecer": parecer_resp},
+        {"parte": "Parte A", "campo": "Título", "valor": val_titulo, "parecer": parecer_titulo},
+        {"parte": "Parte A", "campo": "Tipo documental", "valor": val_tipo, "parecer": parecer_tipo},
+        {"parte": "Parte A", "campo": "Hash (checksum) da imagem", "valor": val_hash, "parecer": parecer_hash},
+        
+        # Registros Parte B
+        {"parte": "Parte B", "campo": "Classe", "valor": val_classe, "parecer": parecer_classe},
+        {"parte": "Parte B", "campo": "Data de produção (do original)", "valor": val_data_prod, "parecer": parecer_data_prod},
+        {"parte": "Parte B", "campo": "Destinação prevista", "valor": val_destinacao, "parecer": parecer_destinacao},
+        {"parte": "Parte B", "campo": "Gênero", "valor": val_genero, "parecer": parecer_genero},
+        {"parte": "Parte B", "campo": "Prazo de guarda", "valor": val_prazo, "parecer": parecer_prazo},
     ]
 
 # ==============================================================================
@@ -255,14 +290,21 @@ class ApiValidador:
                         xref = img[0]
                         pix = fitz.Pixmap(doc, xref)
                         
-                        dpi_x = round((pix.width / pagina.rect.width) * 72) if pagina.rect.width > 0 else 0
-                        dpi_y = round((pix.height / pagina.rect.height) * 72) if pagina.rect.height > 0 else 0
+                        # --- AJUSTE DE SEGURANÇA PARA ESPAÇO DE CORES ---
+                        # Se a imagem tiver canal Alpha ou não for RGB (ex: CMYK/Gray), converte para RGB puro
+                        if pix.alpha or (pix.colorspace and pix.colorspace.n != 3):
+                            pix_convertido = fitz.Pixmap(fitz.csRGB, pix)
+                        else:
+                            pix_convertido = pix
+
+                        dpi_x = round((pix_convertido.width / pagina.rect.width) * 72) if pagina.rect.width > 0 else 0
+                        dpi_y = round((pix_convertido.height / pagina.rect.height) * 72) if pagina.rect.height > 0 else 0
                         dpi_efetivo = min(dpi_x, dpi_y)
 
                         if dpi_efetivo < dpi_minimo_encontrado and dpi_efetivo > 0:
                             dpi_minimo_encontrado = dpi_efetivo
 
-                        cor_img = analisar_modo_cor_real(pix)
+                        cor_img = analisar_modo_cor_real(pix_convertido)
                         if cor_img == "Colorido":
                             modo_cor_final = "Colorido"
                         elif cor_img == "Escala de Cinza" and modo_cor_final != "Colorido":
@@ -270,7 +312,8 @@ class ApiValidador:
 
                         if not eh_nato_digital and len(texto_pagina.strip()) <= 50:
                             try:
-                                img_pil = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                                # Utiliza pix_convertido para evitar estouro de buffer no PIL
+                                img_pil = Image.frombytes("RGB", [pix_convertido.width, pix_convertido.height], pix_convertido.samples)
                                 texto_ocr = pytesseract.image_to_string(img_pil, lang='por+eng')
                                 texto_completo_ocr += f" {texto_ocr}"
                             except Exception as err_ocr:
@@ -388,8 +431,6 @@ class ApiValidador:
             styles = getSampleStyleSheet()
 
             COR_BORDO = colors.HexColor("#4A1525")
-            COR_VERMELHO = colors.HexColor("#D33833")
-            COR_VERDE = colors.HexColor("#15803D")
             COR_TEXTO = colors.HexColor("#2D3748")
             COR_FUNDO_ALT = colors.HexColor("#F8FAFC")
 
@@ -423,7 +464,7 @@ class ApiValidador:
             story.append(t_summary)
 
             # -------------------------------------------------------------------------
-            # CORREÇÃO 2: TABELA DE AVALIAÇÃO TÉCNICA (ANEXO I - DPI, PDF/A, COR, PARECER)
+            # TABELA DE AVALIAÇÃO TÉCNICA (ANEXO I) - SEMPRE EXIBIDO
             # -------------------------------------------------------------------------
             story.append(Spacer(1, 10))
             story.append(Paragraph("Anexo I (Decreto nº 10.278/2020) - Avaliação de Requisitos Técnicos", sub_title))
@@ -464,7 +505,8 @@ class ApiValidador:
             story.append(t_tec)
 
             # -------------------------------------------------------------------------
-            # CORREÇÃO 3: ANEXO II E NOTA METODOLÓGICA GERADOS APENAS SE HOUVER METADADOS AUDITADOS
+            # CONDICIONAL: ANEXO II (PARTES A E B) E APÊNDICE TÉCNICO
+            # SÓ APARECEM SE A FLAG DE METADADOS TIVER SIDO ACTIVADA
             # -------------------------------------------------------------------------
             tem_metadados = any(r.get("matriz_anexo_ii") for r in resultados)
 
@@ -473,25 +515,28 @@ class ApiValidador:
                 story.append(Paragraph("Anexo II (Decreto nº 10.278/2020) - Matriz Complementar de Metadados", sub_title))
 
                 for r in resultados:
-                    if r.get("matriz_anexo_ii"):
+                    matriz = r.get("matriz_anexo_ii", [])
+                    if matriz:
+                        story.append(Spacer(1, 4))
+                        story.append(Paragraph(f"<b>Arquivo: {r['nome']}</b>", cell_style))
+                        story.append(Spacer(1, 2))
+
                         rows_meta = [
-                            [Paragraph("Metadado Exigido (Anexo II - Parte A)", cell_header), 
+                            [Paragraph("Parte / Requisito", cell_header),
+                             Paragraph("Metadado Exigido", cell_header), 
                              Paragraph("Valor Registrado / Atribuído", cell_header), 
                              Paragraph("Parecer da Auditoria", cell_header)]
                         ]
                         
-                        for item in r["matriz_anexo_ii"]:
+                        for item in matriz:
                             rows_meta.append([
+                                Paragraph(f"<b>{item['parte']}</b>", cell_bold),
                                 Paragraph(f"<b>{item['campo']}</b>", cell_bold),
                                 Paragraph(item['valor'], cell_style),
                                 Paragraph(item['parecer'], cell_style)
                             ])
 
-                        story.append(Spacer(1, 4))
-                        story.append(Paragraph(f"<b>Arquivo: {r['nome']}</b>", cell_style))
-                        story.append(Spacer(1, 2))
-                        
-                        t_meta = Table(rows_meta, colWidths=[130, 180, 246])
+                        t_meta = Table(rows_meta, colWidths=[65, 110, 150, 231])
                         t_meta.setStyle(TableStyle([
                             ('BACKGROUND', (0, 0), (-1, 0), COR_BORDO),
                             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
@@ -503,19 +548,26 @@ class ApiValidador:
                 # Apêndice Técnico - Nota Metodológica
                 story.append(PageBreak())
                 story.append(Paragraph("APÊNDICE TÉCNICO - NOTA METODOLÓGICA", title_style))
-                story.append(Paragraph("Detalhamento da metodologia de extração e validação dos metadados estruturados exigidos pelo Anexo II do Decreto nº 10.278/2020.", sub_style))
+                story.append(Paragraph("Detalhamento da metodologia de extração e validação dos metadados estruturados exigidos pelo Anexo II (Partes A e B) do Decreto nº 10.278/2020.", sub_style))
                 story.append(Spacer(1, 8))
 
                 nota_metodologica_data = [
                     [Paragraph("Metadado Exigido", cell_header), Paragraph("Origem Sistêmica & Metodologia de Obtenção / Auditoria", cell_header)],
-                    [Paragraph("<b>Assunto</b>", cell_bold), Paragraph("Inspecionado nativamente nas propriedades 'keywords' e 'subject' do PDF. Se ausente, é reportado como 'Ausente'.", cell_style)],
-                    [Paragraph("<b>Autor (nome)</b>", cell_bold), Paragraph("Lido da propriedade nativa 'author'. Notifica aviso se for detectado nome genérico/usuário de máquina local.", cell_style)],
-                    [Paragraph("<b>Data/Local da digitalização</b>", cell_bold), Paragraph("Data/hora extraídas do campo 'creationDate' e convertidas para DD/MM/AAAA. Local indicado como 'Ausente' (não mantido em PDF físico).", cell_style)],
-                    [Paragraph("<b>Identificador do documento</b>", cell_bold), Paragraph("Atribuição reservada ao sistema de negócios (Unimestre) via UUID no banco de dados.", cell_style)],
-                    [Paragraph("<b>Responsável pela digitalização</b>", cell_bold), Paragraph("Indicação de operador/unidade a ser vinculada no momento do envio ao Unimestre.", cell_style)],
-                    [Paragraph("<b>Título</b>", cell_bold), Paragraph("Lido do campo nativo 'title'. Se ausente, adota-se o nome do arquivo como Título Atribuído.", cell_style)],
-                    [Paragraph("<b>Tipo documental</b>", cell_bold), Paragraph("Atribuído via taxonomia de catálogo do Unimestre após recepção.", cell_style)],
-                    [Paragraph("<b>Hash (checksum) da imagem</b>", cell_bold), Paragraph("Calculado via algoritmo criptográfico SHA-256 diretamente sobre os bytes do arquivo.", cell_style)],
+                    # PARTE A
+                    [Paragraph("<b>Assunto (Parte A)</b>", cell_bold), Paragraph("Inspecionado nativamente nas propriedades 'keywords' e 'subject' do PDF. Se ausente, é reportado como 'Ausente'.", cell_style)],
+                    [Paragraph("<b>Autor - nome (Parte A)</b>", cell_bold), Paragraph("Lido da propriedade nativa 'author'. Notifica aviso se for detectado nome genérico/usuário de máquina local.", cell_style)],
+                    [Paragraph("<b>Data/Local (Parte A)</b>", cell_bold), Paragraph("Data/hora extraídas do campo 'creationDate' e convertidas para DD/MM/AAAA. Local indicado como 'Ausente' (não mantido em PDF físico).", cell_style)],
+                    [Paragraph("<b>Identificador (Parte A)</b>", cell_bold), Paragraph("Atribuição reservada ao sistema de negócios (Unimestre) via UUID no banco de dados.", cell_style)],
+                    [Paragraph("<b>Responsável (Parte A)</b>", cell_bold), Paragraph("Indicação de operador/unidade a ser vinculada no momento do envio ao Unimestre.", cell_style)],
+                    [Paragraph("<b>Título (Parte A)</b>", cell_bold), Paragraph("Lido do campo nativo 'title'. Se ausente, adota-se o nome do arquivo como Título Atribuído.", cell_style)],
+                    [Paragraph("<b>Tipo documental (Parte A)</b>", cell_bold), Paragraph("Atribuído via taxonomia de catálogo do Unimestre após recepção.", cell_style)],
+                    [Paragraph("<b>Hash SHA-256 (Parte A)</b>", cell_bold), Paragraph("Calculado via algoritmo criptográfico SHA-256 diretamente sobre os bytes brutos do arquivo.", cell_style)],
+                    # PARTE B
+                    [Paragraph("<b>Classe (Parte B)</b>", cell_bold), Paragraph("Classificação no plano de documentos do órgão/IES conforme diretrizes do CONARQ/MEC no Unimestre.", cell_style)],
+                    [Paragraph("<b>Data de produção (Parte B)</b>", cell_bold), Paragraph("Data de emissão/produção do documento original em suporte físico em papel.", cell_style)],
+                    [Paragraph("<b>Destinação prevista (Parte B)</b>", cell_bold), Paragraph("Parametrização do destino final (eliminação ou guarda permanente) conforme Tabela de Temporalidade.", cell_style)],
+                    [Paragraph("<b>Gênero (Parte B)</b>", cell_bold), Paragraph("Classificação do suporte de informação (ex: Textual, Cartográfico, Iconográfico) via taxonomia.", cell_style)],
+                    [Paragraph("<b>Prazo de guarda (Parte B)</b>", cell_bold), Paragraph("Prazo legal de retenção definido na Tabela de Temporalidade do ecossistema educacional.", cell_style)],
                 ]
 
                 t_nota = Table(nota_metodologica_data, colWidths=[140, 416])
@@ -532,8 +584,7 @@ class ApiValidador:
         except Exception as e:
             print(f"Erro ao gerar laudo PDF: {str(e)}")
             return False
-
-
+        
 # ==============================================================================
 # PONTO DE ENTRADA E INICIALIZAÇÃO DA INTERFACE
 # ==============================================================================
