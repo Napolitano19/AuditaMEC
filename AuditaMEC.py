@@ -4,6 +4,7 @@ import json
 import datetime
 import re
 import hashlib
+import unicodedata
 import fitz  # PyMuPDF
 import pytesseract
 import subprocess
@@ -18,8 +19,17 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # ==============================================================================
-# CONFIGURAÇÃO DE CAMINHOS LOCAIS E PORTÁTEIS
+# CONFIGURAÇÃO DE ENCODING E CAMINHOS LOCAIS E PORTÁTEIS
 # ==============================================================================
+# Força a codificação UTF-8 no Windows para evitar o erro de 'charmap' no executável
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+
 def obter_caminho_base():
     """Retorna o caminho base do projeto, suportando execução direta e PyInstaller."""
     if getattr(sys, 'frozen', False):
@@ -248,13 +258,14 @@ class ApiValidador:
         try:
             cmd = [EXIFTOOL_LOCAL, "-j", caminho_pdf]
             
-            # Oculta a janela de terminal no Windows durante a execução do processo filho
             creation_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             
             resultado = subprocess.run(
                 cmd, 
                 capture_output=True, 
                 text=True, 
+                encoding='utf-8',      # Força a leitura em UTF-8
+                errors='replace',     # Impede exceção ao ler caracteres especiais
                 check=True, 
                 creationflags=creation_flags
             )
@@ -271,7 +282,7 @@ class ApiValidador:
         softwares_suspeitos = ["PHOTOSHOP", "CANVA", "ILLUSTRATOR", "CORELDRAW", "GIMP", "INKSCAPE"]
 
         for caminho in caminhos:
-            nome_arquivo = os.path.basename(caminho)
+            nome_arquivo = unicodedata.normalize('NFC', os.path.basename(caminho))
             erros = []
             hash_sha256 = calcular_sha256(caminho)
             
@@ -279,7 +290,8 @@ class ApiValidador:
                 doc = fitz.open(caminho)
                 total_paginas = len(doc)
                 
-                eh_nato_digital = False
+                tem_imagem_escaneada_grande = False
+                tem_texto_vetorial = False
                 dpi_minimo_encontrado = 9999
                 modo_cor_final = "Monocromático"
                 tipo_documento = "Geral / Desconhecido"
@@ -295,12 +307,12 @@ class ApiValidador:
 
                     texto_pagina = pagina.get_text()
                     if texto_pagina and len(texto_pagina.strip()) > 50:
-                        eh_nato_digital = True
+                        tem_texto_vetorial = True
                         texto_completo_ocr += f" {texto_pagina}"
 
                     lista_imagens = pagina.get_images()
                     
-                    if not lista_imagens and not eh_nato_digital:
+                    if not lista_imagens and not tem_texto_vetorial:
                         erros.append(f"Página {num_pag + 1} não contém imagem nem texto legível.")
                         continue
 
@@ -308,8 +320,10 @@ class ApiValidador:
                         xref = img[0]
                         pix = fitz.Pixmap(doc, xref)
                         
-                        # --- AJUSTE DE SEGURANÇA PARA ESPAÇO DE CORES ---
-                        # Se a imagem tiver canal Alpha ou não for RGB (ex: CMYK/Gray), converte para RGB puro
+                        # Se houver imagem bitmap de documento impresso (> 400x400px), marca como imagem escaneada
+                        if pix.width > 400 and pix.height > 400:
+                            tem_imagem_escaneada_grande = True
+
                         if pix.alpha or (pix.colorspace and pix.colorspace.n != 3):
                             pix_convertido = fitz.Pixmap(fitz.csRGB, pix)
                         else:
@@ -328,14 +342,19 @@ class ApiValidador:
                         elif cor_img == "Escala de Cinza" and modo_cor_final != "Colorido":
                             modo_cor_final = "Escala de Cinza"
 
-                        if not eh_nato_digital and len(texto_pagina.strip()) <= 50:
+                        if not tem_texto_vetorial or tem_imagem_escaneada_grande:
                             try:
-                                # Utiliza pix_convertido para evitar estouro de buffer no PIL
                                 img_pil = Image.frombytes("RGB", [pix_convertido.width, pix_convertido.height], pix_convertido.samples)
                                 texto_ocr = pytesseract.image_to_string(img_pil, lang='por+eng')
                                 texto_completo_ocr += f" {texto_ocr}"
                             except Exception as err_ocr:
                                 print(f"Aviso no OCR da pág {num_pag + 1}: {str(err_ocr)}")
+
+                # Definição refinada da Origem: se contém imagem de papel digitalizado, obriga os 300 DPI
+                if tem_imagem_escaneada_grande:
+                    eh_nato_digital = False
+                else:
+                    eh_nato_digital = tem_texto_vetorial
 
                 # 2. Resolução DPI
                 dpi_final_str = "Nativo (Vetor)" if eh_nato_digital else str(dpi_minimo_encontrado if dpi_minimo_encontrado != 9999 else "N/A")
@@ -345,15 +364,17 @@ class ApiValidador:
 
                 # 3. Classificação por tipo documental
                 txt_lower = texto_completo_ocr.lower()
-                if "vacina" in txt_lower or "rubéola" in txt_lower or "imunização" in txt_lower:
+                if "vacina" in txt_lower or "rubéola" in txt_lower or "rubeola" in txt_lower or "imunização" in txt_lower:
                     tipo_documento = "Comprovante / Carteira de Vacinação de Rubéola"
                 elif "historico escolar" in txt_lower or "histórico escolar" in txt_lower:
                     tipo_documento = "Histórico Escolar"
                 elif "diploma" in txt_lower or "certificado" in txt_lower:
                     tipo_documento = "Certificado / Diploma"
-                elif "quitação eleitoral" in txt_lower or "quitacao eleitoral" in txt_lower:
+                elif "quitação eleitoral" in txt_lower or "quitacao eleitoral" in txt_lower or "certidão de quitação" in txt_lower:
                     tipo_documento = "Quitação Eleitoral"
-                elif "carteira nacional de habilitação" in txt_lower or "cnh" in txt_lower or "identidade" in txt_lower:
+                elif "nascimento" in txt_lower or "certidão de nascimento" in txt_lower:
+                    tipo_documento = "Certidão de Nascimento"
+                elif "carteira nacional de habilitação" in txt_lower or "cnh" in txt_lower or "identidade" in txt_lower or "registro geral" in txt_lower:
                     tipo_documento = "Carteira de Identidade / CNH"
                 elif "militar" in txt_lower or "reservista" in txt_lower:
                     tipo_documento = "Comprovante Militar"
@@ -376,7 +397,6 @@ class ApiValidador:
                 if "CAMSCANNER" in txt_lower or "CAMSCANNER" in autor or "CAMSCANNER" in criador:
                     erros.append("Marca d'água / aplicativo de terceiro detectado ('CAMSCANNER'). Fundamento Legal: Art. 4º do Decreto nº 10.278/2020.")
 
-                # Verificação OBRIGATÓRIA de Softwares de Edição Gráfica
                 software_usado = (str(metadados_exif.get("Software", "")) + " " + str(metadados_exif.get("Producer", ""))).upper()
                 for sw in softwares_suspeitos:
                     if sw in software_usado:
@@ -384,7 +404,6 @@ class ApiValidador:
 
                 doc.close()
 
-                # CORREÇÃO 1: Audita a matriz do Anexo II APENAS se auditar_softwares (auditarMetadados) for True
                 matriz_anexo_ii = auditar_metadados_com_metodologia(caminho) if auditar_softwares else []
 
                 resultados.append({
@@ -404,6 +423,10 @@ class ApiValidador:
                 })
 
             except Exception as e:
+                msg_erro = str(e)
+                if isinstance(msg_erro, str):
+                    msg_erro = unicodedata.normalize('NFC', msg_erro)
+
                 resultados.append({
                     "nome": nome_arquivo,
                     "caminho": caminho,
@@ -416,7 +439,7 @@ class ApiValidador:
                     "colorido": False,
                     "hash_sha256": hash_sha256,
                     "aprovado": False,
-                    "erros": [f"Falha ao processar o ficheiro PDF: {str(e)}"],
+                    "erros": [f"Falha ao processar o ficheiro PDF: {msg_erro}"],
                     "matriz_anexo_ii": []
                 })
 
