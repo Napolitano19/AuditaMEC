@@ -107,9 +107,6 @@ def analisar_modo_cor_real(pixmap):
 # ==============================================================================
 # FUNÇÃO PARA AUDITAR OS METADADOS (ANEXO II - PARTES A e B)
 # ==============================================================================
-# ==============================================================================
-# FUNÇÃO PARA AUDITAR OS METADADOS (ANEXO II - PARTES A e B)
-# ==============================================================================
 def auditar_metadados_com_metodologia(caminho_pdf):
     """
     Audita os metadados do Anexo II (Partes A e B) do Decreto nº 10.278/2020.
@@ -128,12 +125,10 @@ def auditar_metadados_com_metodologia(caminho_pdf):
     # -------------------------------------------------------------------------
     # ANEXO II - PARTE A (GERAL)
     # -------------------------------------------------------------------------
-    # 1. Assunto
     assunto_nativo = meta.get('keywords') or meta.get('subject')
     val_assunto = assunto_nativo.strip() if assunto_nativo and assunto_nativo.strip() else "Ausente"
     parecer_assunto = f"{TAG_CONFORME}" if val_assunto != "Ausente" else f"{TAG_AVISO}: Não localizado nas propriedades nativas do PDF."
 
-    # 2. Autor (nome)
     autor_nativo = meta.get('author', '').strip()
     if not autor_nativo:
         val_autor = "Ausente"
@@ -146,7 +141,6 @@ def auditar_metadados_com_metodologia(caminho_pdf):
         else:
             parecer_autor = f"{TAG_CONFORME}"
 
-    # 3. Data e local da digitalização
     data_bruta = meta.get('creationDate') or meta.get('modDate')
     data_formatada = "Ausente"
     if data_bruta:
@@ -161,15 +155,12 @@ def auditar_metadados_com_metodologia(caminho_pdf):
     val_data_local = f"Data/Hora: {data_formatada} | Local: Ausente"
     parecer_data_local = f"{TAG_AVISO}: Data extraída do cabeçalho. O container do PDF não armazena geolocalização/local."
 
-    # 4. Identificador do documento digital
     val_id = "Ausente"
     parecer_id = f"{TAG_INFO}: Identificador único de responsabilidade do sistema de acervo (Unimestre) no ato do arquivamento."
 
-    # 5. Responsável pela digitalização
     val_resp = "Ausente"
     parecer_resp = f"{TAG_AVISO}: Responsável legal/operador não registrado no PDF. Requer identificação no envio ao Unimestre."
 
-    # 6. Título
     titulo_nativo = meta.get('title', '').strip()
     if titulo_nativo:
         val_titulo = titulo_nativo
@@ -179,39 +170,31 @@ def auditar_metadados_com_metodologia(caminho_pdf):
         val_titulo = f"{nome_arquivo} (Título Atribuído)"
         parecer_titulo = f"{TAG_AVISO}: Propriedade 'title' nativa ausente. Utilizado o nome do arquivo."
 
-    # 7. Tipo documental
     val_tipo = "Ausente"
     parecer_tipo = f"{TAG_AVISO}: Tipo documental não gravado na estrutura do PDF. Requer atribuição via taxonomia no Unimestre."
 
-    # 8. Hash (checksum) da imagem
     val_hash = calcular_sha256(caminho_pdf)
-    parecer_hash = f"{TAG_CONFORME}: Algoritmo SHA-256 calculated sobre os bytes brutos do arquivo."
+    parecer_hash = f"{TAG_CONFORME}: Algoritmo SHA-256 calculado sobre os bytes brutos do arquivo."
 
     # -------------------------------------------------------------------------
     # ANEXO II - PARTE B (DIREITO PÚBLICO / MEC)
     # -------------------------------------------------------------------------
-    # 9. Classe
     val_classe = "Ausente"
     parecer_classe = f"{TAG_AVISO}: Não gravado no PDF. Requer classificação no plano de documentos do Unimestre."
 
-    # 10. Data de produção (do documento original)
     val_data_prod = "Ausente"
     parecer_data_prod = f"{TAG_AVISO}: Refere-se à data do físico original. Requer indexação no envio ao acervo."
 
-    # 11. Destinação prevista
     val_destinacao = "Ausente"
     parecer_destinacao = f"{TAG_AVISO}: Requer definição de guarda permanente ou eliminação via Tabela de Temporalidade."
 
-    # 12. Gênero
     val_genero = "Ausente"
     parecer_genero = f"{TAG_AVISO}: Requer atribuição de gênero documental (ex: Textual) na taxonomia do Unimestre."
 
-    # 13. Prazo de guarda
     val_prazo = "Ausente"
     parecer_prazo = f"{TAG_AVISO}: Prazo legal a ser parametrizado no módulo de temporalidade do Unimestre."
 
     return [
-        # Registros Parte A
         {"parte": "Parte A", "campo": "Assunto", "valor": val_assunto, "parecer": parecer_assunto},
         {"parte": "Parte A", "campo": "Autor (nome)", "valor": val_autor, "parecer": parecer_autor},
         {"parte": "Parte A", "campo": "Data e local da digitalização", "valor": val_data_local, "parecer": parecer_data_local},
@@ -220,8 +203,6 @@ def auditar_metadados_com_metodologia(caminho_pdf):
         {"parte": "Parte A", "campo": "Título", "valor": val_titulo, "parecer": parecer_titulo},
         {"parte": "Parte A", "campo": "Tipo documental", "valor": val_tipo, "parecer": parecer_tipo},
         {"parte": "Parte A", "campo": "Hash (checksum) da imagem", "valor": val_hash, "parecer": parecer_hash},
-        
-        # Registros Parte B
         {"parte": "Parte B", "campo": "Classe", "valor": val_classe, "parecer": parecer_classe},
         {"parte": "Parte B", "campo": "Data de produção (do original)", "valor": val_data_prod, "parecer": parecer_data_prod},
         {"parte": "Parte B", "campo": "Destinação prevista", "valor": val_destinacao, "parecer": parecer_destinacao},
@@ -264,8 +245,8 @@ class ApiValidador:
                 cmd, 
                 capture_output=True, 
                 text=True, 
-                encoding='utf-8',      # Força a leitura em UTF-8
-                errors='replace',     # Impede exceção ao ler caracteres especiais
+                encoding='utf-8',
+                errors='replace',
                 check=True, 
                 creationflags=creation_flags
             )
@@ -317,40 +298,50 @@ class ApiValidador:
                         continue
 
                     for img in lista_imagens:
-                        xref = img[0]
-                        pix = fitz.Pixmap(doc, xref)
-                        
-                        # Se houver imagem bitmap de documento impresso (> 400x400px), marca como imagem escaneada
-                        if pix.width > 400 and pix.height > 400:
-                            tem_imagem_escaneada_grande = True
+                        try:
+                            xref = img[0]
+                            pix = fitz.Pixmap(doc, xref)
+                            
+                            # CORREÇÃO: Ignora máscaras de imagem (transparências de scanner) que não possuem espaço de cor
+                            if pix.colorspace is None:
+                                continue
+                                
+                            # Se for uma imagem bitmap de documento impresso (> 400x400px), marca como imagem escaneada
+                            if pix.width > 400 and pix.height > 400:
+                                tem_imagem_escaneada_grande = True
 
-                        if pix.alpha or (pix.colorspace and pix.colorspace.n != 3):
-                            pix_convertido = fitz.Pixmap(fitz.csRGB, pix)
-                        else:
-                            pix_convertido = pix
+                            if pix.alpha or (pix.colorspace and pix.colorspace.n != 3):
+                                pix_convertido = fitz.Pixmap(fitz.csRGB, pix)
+                            else:
+                                pix_convertido = pix
 
-                        dpi_x = round((pix_convertido.width / pagina.rect.width) * 72) if pagina.rect.width > 0 else 0
-                        dpi_y = round((pix_convertido.height / pagina.rect.height) * 72) if pagina.rect.height > 0 else 0
-                        dpi_efetivo = min(dpi_x, dpi_y)
+                            dpi_x = round((pix_convertido.width / pagina.rect.width) * 72) if pagina.rect.width > 0 else 0
+                            dpi_y = round((pix_convertido.height / pagina.rect.height) * 72) if pagina.rect.height > 0 else 0
+                            dpi_efetivo = min(dpi_x, dpi_y)
 
-                        if dpi_efetivo < dpi_minimo_encontrado and dpi_efetivo > 0:
-                            dpi_minimo_encontrado = dpi_efetivo
+                            if dpi_efetivo < dpi_minimo_encontrado and dpi_efetivo > 0:
+                                dpi_minimo_encontrado = dpi_efetivo
 
-                        cor_img = analisar_modo_cor_real(pix_convertido)
-                        if cor_img == "Colorido":
-                            modo_cor_final = "Colorido"
-                        elif cor_img == "Escala de Cinza" and modo_cor_final != "Colorido":
-                            modo_cor_final = "Escala de Cinza"
+                            cor_img = analisar_modo_cor_real(pix_convertido)
+                            if cor_img == "Colorido":
+                                modo_cor_final = "Colorido"
+                            elif cor_img == "Escala de Cinza" and modo_cor_final != "Colorido":
+                                modo_cor_final = "Escala de Cinza"
 
-                        if not tem_texto_vetorial or tem_imagem_escaneada_grande:
-                            try:
-                                img_pil = Image.frombytes("RGB", [pix_convertido.width, pix_convertido.height], pix_convertido.samples)
-                                texto_ocr = pytesseract.image_to_string(img_pil, lang='por+eng')
-                                texto_completo_ocr += f" {texto_ocr}"
-                            except Exception as err_ocr:
-                                print(f"Aviso no OCR da pág {num_pag + 1}: {str(err_ocr)}")
+                            # Tesseract OCR para identificação do tipo documental em imagens digitalizadas
+                            if not tem_texto_vetorial or tem_imagem_escaneada_grande:
+                                try:
+                                    img_pil = Image.frombytes("RGB", [pix_convertido.width, pix_convertido.height], pix_convertido.samples)
+                                    texto_ocr = pytesseract.image_to_string(img_pil, lang='por+eng')
+                                    texto_completo_ocr += f" {texto_ocr}"
+                                except Exception as err_ocr:
+                                    print(f"Aviso no OCR da pág {num_pag + 1}: {str(err_ocr)}")
 
-                # Definição refinada da Origem: se contém imagem de papel digitalizado, obriga os 300 DPI
+                        except Exception as img_err:
+                            print(f"Aviso ao processar imagem {img[0]}: {str(img_err)}")
+                            continue
+
+                # Definição refinada da Origem
                 if tem_imagem_escaneada_grande:
                     eh_nato_digital = False
                 else:
@@ -446,193 +437,183 @@ class ApiValidador:
         return resultados
 
     def gerar_laudo_pdf(self, resultados):
-            """Gera o laudo oficial em PDF em conformidade estrita com o Decreto nº 10.278/2020."""
-            try:
-                file_type = webview.FileDialog.SAVE if hasattr(webview, 'FileDialog') else webview.SAVE_DIALOG
-                local_salvar = self._window.create_file_dialog(
-                    file_type, 
-                    save_filename="Laudo_Conformidade_MEC.pdf",
-                    file_types=('Arquivos PDF (*.pdf)',)
-                )
-                if not local_salvar:
-                    return False
+        """Gera o laudo oficial em PDF em conformidade estrita com o Decreto nº 10.278/2020."""
+        try:
+            file_type = webview.FileDialog.SAVE if hasattr(webview, 'FileDialog') else webview.SAVE_DIALOG
+            local_salvar = self._window.create_file_dialog(
+                file_type, 
+                save_filename="Laudo_Conformidade_MEC.pdf",
+                file_types=('Arquivos PDF (*.pdf)',)
+            )
+            if not local_salvar:
+                return False
 
-                if isinstance(local_salvar, tuple):
-                    local_salvar = local_salvar[0]
+            if isinstance(local_salvar, tuple):
+                local_salvar = local_salvar[0]
 
-                doc = SimpleDocTemplate(
-                    local_salvar, 
-                    pagesize=letter, 
-                    rightMargin=28, 
-                    leftMargin=28, 
-                    topMargin=28, 
-                    bottomMargin=28
-                )
-                story = []
-                styles = getSampleStyleSheet()
+            doc = SimpleDocTemplate(
+                local_salvar, 
+                pagesize=letter, 
+                rightMargin=28, 
+                leftMargin=28, 
+                topMargin=28, 
+                bottomMargin=28
+            )
+            story = []
+            styles = getSampleStyleSheet()
 
-                COR_BORDO = colors.HexColor("#4A1525")
-                COR_TEXTO = colors.HexColor("#2D3748")
-                COR_FUNDO_ALT = colors.HexColor("#F8FAFC")
+            COR_BORDO = colors.HexColor("#4A1525")
+            COR_TEXTO = colors.HexColor("#2D3748")
+            COR_FUNDO_ALT = colors.HexColor("#F8FAFC")
 
-                title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=13, textColor=COR_BORDO, spaceAfter=2)
-                sub_title = ParagraphStyle('SubTitle', parent=styles['Heading2'], fontSize=10, textColor=COR_BORDO, spaceBefore=10, spaceAfter=4)
-                sub_style = ParagraphStyle('SubStyle', parent=styles['Normal'], fontSize=8, textColor=COR_TEXTO, spaceAfter=8)
+            title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=13, textColor=COR_BORDO, spaceAfter=2)
+            sub_title = ParagraphStyle('SubTitle', parent=styles['Heading2'], fontSize=10, textColor=COR_BORDO, spaceBefore=10, spaceAfter=4)
+            sub_style = ParagraphStyle('SubStyle', parent=styles['Normal'], fontSize=8, textColor=COR_TEXTO, spaceAfter=8)
+            
+            cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontSize=7, leading=9, textColor=COR_TEXTO)
+            cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=7, leading=9, fontName="Helvetica-Bold", textColor=COR_TEXTO)
+            cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=7, leading=9, fontName="Helvetica-Bold", textColor=colors.white)
+
+            data_hora = datetime.datetime.now().strftime("%d/%m/%Y às %H:%M:%S")
+            url_dou = "https://www.in.gov.br/en/web/dou/-/decreto-n-10.278-de-18-de-marco-de-2020-248810105"
+
+            story.append(Paragraph("LAUDO TÉCNICO DE CONFORMIDADE REGULATÓRIA - MEC", title_style))
+            
+            texto_embasamento = (
+                f"<b>Data da Auditoria:</b> {data_hora} | "
+                f"<b>Embasamento Legal:</b> <font color='#1D4ED8'><a href='{url_dou}'><u>Decreto Federal nº 10.278/2020 (DOU)</u></a></font>"
+            )
+            story.append(Paragraph(texto_embasamento, sub_style))
+
+            total = len(resultados)
+            aprovados = sum(1 for r in resultados if r['aprovado'])
+            reprovados = total - aprovados
+
+            summary_data = [
+                [Paragraph("<b>TOTAL ANALISADO</b>", cell_bold), Paragraph("<b>APROVADOS</b>", cell_bold), Paragraph("<b>REPROVADOS</b>", cell_bold)],
+                [Paragraph(str(total), cell_bold), Paragraph(f"<font color='#15803D'>{aprovados}</font>", cell_bold), Paragraph(f"<font color='#D33833'>{reprovados}</font>", cell_bold)]
+            ]
+            t_summary = Table(summary_data, colWidths=[185, 185, 186])
+            t_summary.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), COR_FUNDO_ALT),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e0')),
+                ('PADDING', (0, 0), (-1, -1), 4),
+            ]))
+            story.append(t_summary)
+
+            story.append(Spacer(1, 10))
+            story.append(Paragraph("Anexo I (Decreto nº 10.278/2020) - Avaliação de Requisitos Técnicos", sub_title))
+
+            rows_tec = [
+                [Paragraph("Arquivo / Tipo", cell_header), 
+                Paragraph("DPI", cell_header), 
+                Paragraph("PDF/A", cell_header), 
+                Paragraph("Cor", cell_header), 
+                Paragraph("Parecer Técnico", cell_header)]
+            ]
+
+            for r in resultados:
+                status_txt = "<font color='#15803D'><b>APROVADO</b></font>" if r['aprovado'] else "<font color='#D33833'><b>REPROVADO</b></font>"
+                pdfa_txt = "Sim" if r['pdfa'] else "Não"
+                info_doc = f"<b>{r['nome']}</b><br/>Origem: {r['origem']} | Tipo: {r['tipo_doc']}"
                 
-                cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontSize=7, leading=9, textColor=COR_TEXTO)
-                cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontSize=7, leading=9, fontName="Helvetica-Bold", textColor=COR_TEXTO)
-                cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontSize=7, leading=9, fontName="Helvetica-Bold", textColor=colors.white)
+                parecer_muda = f"<b>Status:</b> {status_txt}"
+                if r.get('erros'):
+                    erros_str = "<br/>".join([f"• {e}" for e in r['erros']])
+                    parecer_muda += f"<br/><font color='#D33833'>{erros_str}</font>"
 
-                data_hora = datetime.datetime.now().strftime("%d/%m/%Y às %H:%M:%S")
-                url_dou = "https://www.in.gov.br/en/web/dou/-/decreto-n-10.278-de-18-de-marco-de-2020-248810105"
+                rows_tec.append([
+                    Paragraph(info_doc, cell_style),
+                    Paragraph(str(r['dpi']), cell_style),
+                    Paragraph(pdfa_txt, cell_style),
+                    Paragraph(r['modo_cor'], cell_style),
+                    Paragraph(parecer_muda, cell_style)
+                ])
 
-                story.append(Paragraph("LAUDO TÉCNICO DE CONFORMIDADE REGULATÓRIA - MEC", title_style))
-                
-                # Subtítulo com link dinâmico clicável para a publicação no DOU
-                texto_embasamento = (
-                    f"<b>Data da Auditoria:</b> {data_hora} | "
-                    f"<b>Embasamento Legal:</b> <font color='#1D4ED8'><a href='{url_dou}'><u>Decreto Federal nº 10.278/2020 (DOU)</u></a></font>"
-                )
-                story.append(Paragraph(texto_embasamento, sub_style))
+            t_tec = Table(rows_tec, colWidths=[176, 50, 45, 65, 220])
+            t_tec.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), COR_BORDO),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('PADDING', (0, 0), (-1, -1), 3),
+            ]))
+            story.append(t_tec)
 
-                total = len(resultados)
-                aprovados = sum(1 for r in resultados if r['aprovado'])
-                reprovados = total - aprovados
+            tem_metadados = any(r.get("matriz_anexo_ii") for r in resultados)
 
-                summary_data = [
-                    [Paragraph("<b>TOTAL ANALISADO</b>", cell_bold), Paragraph("<b>APROVADOS</b>", cell_bold), Paragraph("<b>REPROVADOS</b>", cell_bold)],
-                    [Paragraph(str(total), cell_bold), Paragraph(f"<font color='#15803D'>{aprovados}</font>", cell_bold), Paragraph(f"<font color='#D33833'>{reprovados}</font>", cell_bold)]
-                ]
-                t_summary = Table(summary_data, colWidths=[185, 185, 186])
-                t_summary.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), COR_FUNDO_ALT),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e0')),
-                    ('PADDING', (0, 0), (-1, -1), 4),
-                ]))
-                story.append(t_summary)
-
-                # -------------------------------------------------------------------------
-                # TABELA DE AVALIAÇÃO TÉCNICA (ANEXO I) - SEMPRE EXIBIDO
-                # -------------------------------------------------------------------------
+            if tem_metadados:
                 story.append(Spacer(1, 10))
-                story.append(Paragraph("Anexo I (Decreto nº 10.278/2020) - Avaliação de Requisitos Técnicos", sub_title))
-
-                rows_tec = [
-                    [Paragraph("Arquivo / Tipo", cell_header), 
-                    Paragraph("DPI", cell_header), 
-                    Paragraph("PDF/A", cell_header), 
-                    Paragraph("Cor", cell_header), 
-                    Paragraph("Parecer Técnico", cell_header)]
-                ]
+                story.append(Paragraph("Anexo II (Decreto nº 10.278/2020) - Matriz Complementar de Metadados", sub_title))
 
                 for r in resultados:
-                    status_txt = "<font color='#15803D'><b>APROVADO</b></font>" if r['aprovado'] else "<font color='#D33833'><b>REPROVADO</b></font>"
-                    pdfa_txt = "Sim" if r['pdfa'] else "Não"
-                    info_doc = f"<b>{r['nome']}</b><br/>Origem: {r['origem']} | Tipo: {r['tipo_doc']}"
-                    
-                    parecer_muda = f"<b>Status:</b> {status_txt}"
-                    if r.get('erros'):
-                        erros_str = "<br/>".join([f"• {e}" for e in r['erros']])
-                        parecer_muda += f"<br/><font color='#D33833'>{erros_str}</font>"
+                    matriz = r.get("matriz_anexo_ii", [])
+                    if matriz:
+                        story.append(Spacer(1, 4))
+                        story.append(Paragraph(f"<b>Arquivo: {r['nome']}</b>", cell_style))
+                        story.append(Spacer(1, 2))
 
-                    rows_tec.append([
-                        Paragraph(info_doc, cell_style),
-                        Paragraph(str(r['dpi']), cell_style),
-                        Paragraph(pdfa_txt, cell_style),
-                        Paragraph(r['modo_cor'], cell_style),
-                        Paragraph(parecer_muda, cell_style)
-                    ])
+                        rows_meta = [
+                            [Paragraph("Parte / Requisito", cell_header),
+                            Paragraph("Metadado Exigido", cell_header), 
+                            Paragraph("Valor Registrado / Atribuído", cell_header), 
+                            Paragraph("Parecer da Auditoria", cell_header)]
+                        ]
+                        
+                        for item in matriz:
+                            rows_meta.append([
+                                Paragraph(f"<b>{item['parte']}</b>", cell_bold),
+                                Paragraph(f"<b>{item['campo']}</b>", cell_bold),
+                                Paragraph(item['valor'], cell_style),
+                                Paragraph(item['parecer'], cell_style)
+                            ])
 
-                t_tec = Table(rows_tec, colWidths=[176, 50, 45, 65, 220])
-                t_tec.setStyle(TableStyle([
+                        t_meta = Table(rows_meta, colWidths=[65, 110, 150, 231])
+                        t_meta.setStyle(TableStyle([
+                            ('BACKGROUND', (0, 0), (-1, 0), COR_BORDO),
+                            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
+                            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                            ('PADDING', (0, 0), (-1, -1), 3),
+                        ]))
+                        story.append(t_meta)
+
+                story.append(PageBreak())
+                story.append(Paragraph("APÊNDICE TÉCNICO - NOTA METODOLÓGICA", title_style))
+                story.append(Paragraph("Detalhamento da metodologia de extração e validação dos metadados estruturados exigidos pelo Anexo II (Partes A e B) do Decreto nº 10.278/2020.", sub_style))
+                story.append(Spacer(1, 8))
+
+                nota_metodologica_data = [
+                    [Paragraph("Metadado Exigido", cell_header), Paragraph("Origem Sistêmica & Metodologia de Obtenção / Auditoria", cell_header)],
+                    [Paragraph("<b>Assunto (Parte A)</b>", cell_bold), Paragraph("Inspecionado nativamente nas propriedades 'keywords' e 'subject' do PDF. Se ausente, é reportado como 'Ausente'.", cell_style)],
+                    [Paragraph("<b>Autor - nome (Parte A)</b>", cell_bold), Paragraph("Lido da propriedade nativa 'author'. Notifica aviso se for detectado nome genérico/usuário de máquina local.", cell_style)],
+                    [Paragraph("<b>Data/Local (Parte A)</b>", cell_bold), Paragraph("Data/hora extraídas do campo 'creationDate' e convertidas para DD/MM/AAAA. Local indicado como 'Ausente' (não mantido em PDF físico).", cell_style)],
+                    [Paragraph("<b>Identificador (Parte A)</b>", cell_bold), Paragraph("Atribuição reservada ao sistema de negócios (Unimestre) via UUID no banco de dados.", cell_style)],
+                    [Paragraph("<b>Responsável (Parte A)</b>", cell_bold), Paragraph("Indicação de operador/unidade a ser vinculada no momento do envio ao Unimestre.", cell_style)],
+                    [Paragraph("<b>Título (Parte A)</b>", cell_bold), Paragraph("Lido do campo nativo 'title'. Se ausente, adota-se o nome do arquivo como Título Atribuído.", cell_style)],
+                    [Paragraph("<b>Tipo documental (Parte A)</b>", cell_bold), Paragraph("Atribuído via taxonomia de catálogo do Unimestre após recepção.", cell_style)],
+                    [Paragraph("<b>Hash SHA-256 (Parte A)</b>", cell_bold), Paragraph("Calculado via algoritmo criptográfico SHA-256 diretamente sobre os bytes brutos do arquivo.", cell_style)],
+                    [Paragraph("<b>Classe (Parte B)</b>", cell_bold), Paragraph("Classificação no plano de documentos do órgão/IES conforme diretrizes do CONARQ/MEC no Unimestre.", cell_style)],
+                    [Paragraph("<b>Data de produção (Parte B)</b>", cell_bold), Paragraph("Data de emissão/produção do documento original em suporte físico em papel.", cell_style)],
+                    [Paragraph("<b>Destinação prevista (Parte B)</b>", cell_bold), Paragraph("Parametrização do destino final (eliminação ou guarda permanente) conforme Tabela de Temporalidade.", cell_style)],
+                    [Paragraph("<b>Gênero (Parte B)</b>", cell_bold), Paragraph("Classificação do suporte de informação (ex: Textual, Cartográfico, Iconográfico) via taxonomia.", cell_style)],
+                    [Paragraph("<b>Prazo de guarda (Parte B)</b>", cell_bold), Paragraph("Prazo legal de retenção definido na Tabela de Temporalidade do ecossistema educacional.", cell_style)],
+                ]
+
+                t_nota = Table(nota_metodologica_data, colWidths=[140, 416])
+                t_nota.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, 0), COR_BORDO),
                     ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
                     ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                    ('PADDING', (0, 0), (-1, -1), 3),
+                    ('PADDING', (0, 0), (-1, -1), 4),
                 ]))
-                story.append(t_tec)
+                story.append(t_nota)
 
-                # -------------------------------------------------------------------------
-                # CONDICIONAL: ANEXO II (PARTES A E B) E APÊNDICE TÉCNICO
-                # SÓ APARECEM SE A FLAG DE METADADOS TIVER SIDO ACTIVADA
-                # -------------------------------------------------------------------------
-                tem_metadados = any(r.get("matriz_anexo_ii") for r in resultados)
+            doc.build(story)
+            return True
+        except Exception as e:
+            print(f"Erro ao gerar laudo PDF: {str(e)}")
+            return False
 
-                if tem_metadados:
-                    story.append(Spacer(1, 10))
-                    story.append(Paragraph("Anexo II (Decreto nº 10.278/2020) - Matriz Complementar de Metadados", sub_title))
-
-                    for r in resultados:
-                        matriz = r.get("matriz_anexo_ii", [])
-                        if matriz:
-                            story.append(Spacer(1, 4))
-                            story.append(Paragraph(f"<b>Arquivo: {r['nome']}</b>", cell_style))
-                            story.append(Spacer(1, 2))
-
-                            rows_meta = [
-                                [Paragraph("Parte / Requisito", cell_header),
-                                Paragraph("Metadado Exigido", cell_header), 
-                                Paragraph("Valor Registrado / Atribuído", cell_header), 
-                                Paragraph("Parecer da Auditoria", cell_header)]
-                            ]
-                            
-                            for item in matriz:
-                                rows_meta.append([
-                                    Paragraph(f"<b>{item['parte']}</b>", cell_bold),
-                                    Paragraph(f"<b>{item['campo']}</b>", cell_bold),
-                                    Paragraph(item['valor'], cell_style),
-                                    Paragraph(item['parecer'], cell_style)
-                                ])
-
-                            t_meta = Table(rows_meta, colWidths=[65, 110, 150, 231])
-                            t_meta.setStyle(TableStyle([
-                                ('BACKGROUND', (0, 0), (-1, 0), COR_BORDO),
-                                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
-                                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                                ('PADDING', (0, 0), (-1, -1), 3),
-                            ]))
-                            story.append(t_meta)
-
-                    # Apêndice Técnico - Nota Metodológica
-                    story.append(PageBreak())
-                    story.append(Paragraph("APÊNDICE TÉCNICO - NOTA METODOLÓGICA", title_style))
-                    story.append(Paragraph("Detalhamento da metodologia de extração e validação dos metadados estruturados exigidos pelo Anexo II (Partes A e B) do Decreto nº 10.278/2020.", sub_style))
-                    story.append(Spacer(1, 8))
-
-                    nota_metodologica_data = [
-                        [Paragraph("Metadado Exigido", cell_header), Paragraph("Origem Sistêmica & Metodologia de Obtenção / Auditoria", cell_header)],
-                        # PARTE A
-                        [Paragraph("<b>Assunto (Parte A)</b>", cell_bold), Paragraph("Inspecionado nativamente nas propriedades 'keywords' e 'subject' do PDF. Se ausente, é reportado como 'Ausente'.", cell_style)],
-                        [Paragraph("<b>Autor - nome (Parte A)</b>", cell_bold), Paragraph("Lido da propriedade nativa 'author'. Notifica aviso se for detectado nome genérico/usuário de máquina local.", cell_style)],
-                        [Paragraph("<b>Data/Local (Parte A)</b>", cell_bold), Paragraph("Data/hora extraídas do campo 'creationDate' e convertidas para DD/MM/AAAA. Local indicado como 'Ausente' (não mantido em PDF físico).", cell_style)],
-                        [Paragraph("<b>Identificador (Parte A)</b>", cell_bold), Paragraph("Atribuição reservada ao sistema de negócios (Unimestre) via UUID no banco de dados.", cell_style)],
-                        [Paragraph("<b>Responsável (Parte A)</b>", cell_bold), Paragraph("Indicação de operador/unidade a ser vinculada no momento do envio ao Unimestre.", cell_style)],
-                        [Paragraph("<b>Título (Parte A)</b>", cell_bold), Paragraph("Lido do campo nativo 'title'. Se ausente, adota-se o nome do arquivo como Título Atribuído.", cell_style)],
-                        [Paragraph("<b>Tipo documental (Parte A)</b>", cell_bold), Paragraph("Atribuído via taxonomia de catálogo do Unimestre após recepção.", cell_style)],
-                        [Paragraph("<b>Hash SHA-256 (Parte A)</b>", cell_bold), Paragraph("Calculado via algoritmo criptográfico SHA-256 diretamente sobre os bytes brutos do arquivo.", cell_style)],
-                        # PARTE B
-                        [Paragraph("<b>Classe (Parte B)</b>", cell_bold), Paragraph("Classificação no plano de documentos do órgão/IES conforme diretrizes do CONARQ/MEC no Unimestre.", cell_style)],
-                        [Paragraph("<b>Data de produção (Parte B)</b>", cell_bold), Paragraph("Data de emissão/produção do documento original em suporte físico em papel.", cell_style)],
-                        [Paragraph("<b>Destinação prevista (Parte B)</b>", cell_bold), Paragraph("Parametrização do destino final (eliminação ou guarda permanente) conforme Tabela de Temporalidade.", cell_style)],
-                        [Paragraph("<b>Gênero (Parte B)</b>", cell_bold), Paragraph("Classificação do suporte de informação (ex: Textual, Cartográfico, Iconográfico) via taxonomia.", cell_style)],
-                        [Paragraph("<b>Prazo de guarda (Parte B)</b>", cell_bold), Paragraph("Prazo legal de retenção definido na Tabela de Temporalidade do ecossistema educacional.", cell_style)],
-                    ]
-
-                    t_nota = Table(nota_metodologica_data, colWidths=[140, 416])
-                    t_nota.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), COR_BORDO),
-                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
-                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                        ('PADDING', (0, 0), (-1, -1), 4),
-                    ]))
-                    story.append(t_nota)
-
-                doc.build(story)
-                return True
-            except Exception as e:
-                print(f"Erro ao gerar laudo PDF: {str(e)}")
-                return False
 # ==============================================================================
 # PONTO DE ENTRADA E INICIALIZAÇÃO DA INTERFACE
 # ==============================================================================
@@ -641,7 +622,7 @@ if __name__ == '__main__':
     caminho_html = os.path.join(BASE_DIR, 'index.html')
 
     window = webview.create_window(
-        'Validador de Conformidade MEC - Decreto 10.278/2020',
+        'AuditaMEC - Conformidade MEC Decreto 10.278/2020',
         url=caminho_html,
         js_api=api,
         width=1100,

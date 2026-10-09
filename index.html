@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Validador MEC</title>
+  <title>AuditaMEC — Validador de Documentos MEC</title>
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { margin: 0; padding: 24px; background: #f8fafc; color: #1e293b; }
@@ -39,12 +39,23 @@
 
     .erros-list { font-size: 0.8rem; color: #dc2626; margin: 6px 0 0 0; padding-left: 16px; line-height: 1.3; }
     .doc-type { font-size: 0.78rem; color: #64748b; margin-top: 4px; }
+
+    /* Responsividade Adicional para Telas Menores e Janelas Compactas */
+    @media (max-width: 768px) {
+      body { padding: 12px; }
+      .controls { flex-direction: column; align-items: flex-start; gap: 12px; }
+      .controls > div { width: 100%; }
+      .checkbox-group { margin-top: 4px; }
+      .botoes-acao { width: 100%; display: flex; flex-direction: column; margin-left: 0 !important; gap: 10px; }
+      .botoes-acao button { width: 100%; }
+      th, td { padding: 8px; font-size: 0.8rem; }
+    }
   </style>
 </head>
 <body>
 
   <div class="container">
-    <h1>Validador de Documentos MEC</h1>
+    <h1>AuditaMEC</h1>
     <p class="sub">Verificação automatizada de resolução (DPI), padrão PDF/A, OCR, marcas d'água, auditoria de metadados e origem (Decreto 10.278/2020).</p>
 
     <div class="card controls">
@@ -63,7 +74,7 @@
         <label for="metadadosCheck" style="cursor: pointer;">Auditar Metadados Completos (Anexo II - Partes A e B)</label>
       </div>
 
-      <div style="margin-left: auto; display: flex; gap: 10px;">
+      <div class="botoes-acao" style="margin-left: auto; display: flex; gap: 10px;">
         <button class="btn" onclick="selecionarEValidar()">Selecionar Documentos PDF</button>
         <button id="btnLaudo" class="btn btn-secondary" onclick="exportarLaudo()" disabled>📄 Exportar Laudo em PDF</button>
       </div>
@@ -127,13 +138,25 @@
           ? '<span class="badge badge-success">APROVADO</span>' 
           : '<span class="badge badge-danger">REPROVADO</span>';
 
-        const badgeCor = res.colorido 
-          ? '<span class="badge badge-blue">Colorido</span>' 
-          : '<span class="badge badge-gray">P&B / Cinza</span>';
+        // Lógica para exibir "Indefinido" na cor caso ocorra falha de leitura
+        let badgeCor = '';
+        if (res.modo_cor === 'Indefinido') {
+            badgeCor = '<span class="badge badge-orange">Indefinido</span>';
+        } else if (res.colorido) {
+            badgeCor = '<span class="badge badge-blue">Colorido</span>';
+        } else {
+            badgeCor = '<span class="badge badge-gray">P&B / Cinza</span>';
+        }
 
-        const badgeOrigem = res.origem === 'Nato-Digital'
-          ? '<span class="badge badge-purple">Nato-Digital</span>'
-          : '<span class="badge badge-orange">Escaneado</span>';
+        // Formatação do selo de Origem (Nato-Digital, Escaneado ou Erro)
+        let badgeOrigem = '';
+        if (res.origem === 'Nato-Digital') {
+            badgeOrigem = '<span class="badge badge-purple">Nato-Digital</span>';
+        } else if (res.origem === 'Erro') {
+            badgeOrigem = '<span class="badge badge-danger">Erro</span>';
+        } else {
+            badgeOrigem = '<span class="badge badge-orange">Escaneado</span>';
+        }
 
         const badgePdfa = res.pdfa 
           ? '<span class="badge badge-success">Sim</span>' 
@@ -144,8 +167,9 @@
           detalhesErros = `<ul class="erros-list" style="margin-top:5px; color:#D33833;">${res.erros.map(e => `<li>${e}</li>`).join('')}</ul>`;
         }
 
-        const dpiTexto = res.dpi === "Nativo (Vetor)" ? res.dpi : `${res.dpi} DPI`;
-        const totalPaginas = res.paginas || 1;
+        // Evita exibir "N/A DPI" e mostra apenas "N/A" nos casos de erro
+        const dpiTexto = res.dpi === "Nativo (Vetor)" ? res.dpi : (res.dpi === "N/A" ? "N/A" : `${res.dpi} DPI`);
+        const totalPaginas = res.paginas || 0;
 
         htmlRows += `
           <tr>
