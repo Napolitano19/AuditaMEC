@@ -273,6 +273,16 @@ class ApiValidador:
                 
                 tem_imagem_escaneada_grande = False
                 tem_texto_vetorial = False
+                eh_assinado_digitalmente = False
+                
+                # Detecção nativa de contêiner de assinatura digital no PDF (protegido contra versão do PyMuPDF)
+                if hasattr(doc, 'get_sig_flags'):
+                    try:
+                        if doc.get_sig_flags() > 0:
+                            eh_assinado_digitalmente = True
+                    except Exception:
+                        pass
+
                 dpi_minimo_encontrado = 9999
                 modo_cor_final = "Monocromático"
                 tipo_documento = "Geral / Desconhecido"
@@ -281,6 +291,7 @@ class ApiValidador:
                 # 1. Análise das páginas
                 for num_pag in range(total_paginas):
                     pagina = doc[num_pag]
+                    pagina_rect = pagina.rect
                     rotacao = pagina.rotation
                     
                     if rotacao != 0:
@@ -302,12 +313,29 @@ class ApiValidador:
                             xref = img[0]
                             pix = fitz.Pixmap(doc, xref)
                             
-                            # CORREÇÃO: Ignora máscaras de imagem (transparências de scanner) que não possuem espaço de cor
+                            # Ignora máscaras de transparência sem espaço de cor
                             if pix.colorspace is None:
                                 continue
-                                
-                            # Se for uma imagem bitmap de documento impresso (> 400x400px), marca como imagem escaneada
-                            if pix.width > 400 and pix.height > 400:
+
+                            # Obtém o retângulo real onde a imagem é desenhada na página
+                            rects = pagina.get_image_rects(xref)
+                            area_cobertura = 0.0
+                            
+                            if rects:
+                                img_rect = rects[0]
+                                if img_rect.width > 0 and img_rect.height > 0:
+                                    dpi_x = round((pix.width / img_rect.width) * 72)
+                                    dpi_y = round((pix.height / img_rect.height) * 72)
+                                    area_cobertura = (img_rect.width * img_rect.height) / (pagina_rect.width * pagina_rect.height) if (pagina_rect.width * pagina_rect.height) > 0 else 0
+                                else:
+                                    dpi_x = round((pix.width / pagina_rect.width) * 72) if pagina_rect.width > 0 else 0
+                                    dpi_y = round((pix.height / pagina_rect.height) * 72) if pagina_rect.height > 0 else 0
+                            else:
+                                dpi_x = round((pix.width / pagina_rect.width) * 72) if pagina_rect.width > 0 else 0
+                                dpi_y = round((pix.height / pagina_rect.height) * 72) if pagina_rect.height > 0 else 0
+
+                            # Considera imagem escaneada de folha física apenas se ocupar mais de 50% da área da página
+                            if pix.width > 400 and pix.height > 400 and area_cobertura > 0.50:
                                 tem_imagem_escaneada_grande = True
 
                             if pix.alpha or (pix.colorspace and pix.colorspace.n != 3):
@@ -315,8 +343,6 @@ class ApiValidador:
                             else:
                                 pix_convertido = pix
 
-                            dpi_x = round((pix_convertido.width / pagina.rect.width) * 72) if pagina.rect.width > 0 else 0
-                            dpi_y = round((pix_convertido.height / pagina.rect.height) * 72) if pagina.rect.height > 0 else 0
                             dpi_efetivo = min(dpi_x, dpi_y)
 
                             if dpi_efetivo < dpi_minimo_encontrado and dpi_efetivo > 0:
@@ -328,7 +354,7 @@ class ApiValidador:
                             elif cor_img == "Escala de Cinza" and modo_cor_final != "Colorido":
                                 modo_cor_final = "Escala de Cinza"
 
-                            # Tesseract OCR para identificação do tipo documental em imagens digitalizadas
+                            # Tesseract OCR para documentos sem texto vetorial
                             if not tem_texto_vetorial or tem_imagem_escaneada_grande:
                                 try:
                                     img_pil = Image.frombytes("RGB", [pix_convertido.width, pix_convertido.height], pix_convertido.samples)
@@ -341,8 +367,16 @@ class ApiValidador:
                             print(f"Aviso ao processar imagem {img[0]}: {str(img_err)}")
                             continue
 
-                # Definição refinada da Origem
-                if tem_imagem_escaneada_grande:
+                txt_lower = texto_completo_ocr.lower()
+
+                # Reconhecimento de assinaturas digitais ICP-Brasil e plataformas de validação
+                if "icp-brasil" in txt_lower or "docxpress" in txt_lower or "assinado digitalmente" in txt_lower or "protocolo assinatura digital" in txt_lower:
+                    eh_assinado_digitalmente = True
+
+                # Definição final de Origem
+                if eh_assinado_digitalmente:
+                    eh_nato_digital = True
+                elif tem_imagem_escaneada_grande:
                     eh_nato_digital = False
                 else:
                     eh_nato_digital = tem_texto_vetorial
@@ -354,7 +388,6 @@ class ApiValidador:
                     erros.append(f"Resolução insuficiente ({dpi_minimo_encontrado} DPI encontrado vs {dpi_minimo} DPI exigido). Fundamento Legal: Anexo I do Decreto nº 10.278/2020.")
 
                 # 3. Classificação por tipo documental
-                txt_lower = texto_completo_ocr.lower()
                 if "vacina" in txt_lower or "rubéola" in txt_lower or "rubeola" in txt_lower or "imunização" in txt_lower:
                     tipo_documento = "Comprovante / Carteira de Vacinação de Rubéola"
                 elif "historico escolar" in txt_lower or "histórico escolar" in txt_lower:
