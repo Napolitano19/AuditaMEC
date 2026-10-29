@@ -258,13 +258,22 @@ class ApiValidador:
         return {}
 
     def analisar_documentos(self, caminhos, auditar_softwares=False, exigir_pdfa=False, dpi_minimo=300):
-        """Executa a verificação técnica completa em cada ficheiro PDF fornecido."""
+        """Executa a verificação técnica completa em cada ficheiro PDF fornecido com notificação em tempo real."""
         resultados = []
+        total_arquivos = len(caminhos)
+
+        # 1. Notifica o início do progresso no frontend
+        if hasattr(self, '_window') and self._window:
+            try:
+                self._window.evaluate_js(f"iniciarProgresso({total_arquivos});")
+            except Exception as e:
+                print(f"Aviso UI: {e}")
+
         softwares_suspeitos = ["PHOTOSHOP", "CANVA", "ILLUSTRATOR", "CORELDRAW", "GIMP", "INKSCAPE"]
         softwares_geradores = ["JASPERREPORTS", "ITEXT", "REPORTLAB", "PDFIUM", "MICROSOFT", "INDESIGN", "BIRT", "APACHE FOP", "ACROBAT"]
         hardwares_scanners = ["EPSON", "CANON", "HP DESKJET", "XEROX", "KONICA", "MINOLTA", "RICOH", "CAMSCANNER", "TESSERACT", "SCANNER", "FUJITSU"]
 
-        for caminho in caminhos:
+        for idx, caminho in enumerate(caminhos, start=1):
             nome_arquivo = unicodedata.normalize('NFC', os.path.basename(caminho))
             erros = []
             hash_sha256 = calcular_sha256(caminho)
@@ -292,7 +301,7 @@ class ApiValidador:
                 tipo_documento = "Geral / Desconhecido"
                 texto_completo_ocr = ""
 
-                # 1. Análise detalhada das páginas (Estrutura e Camadas)
+                # Análise detalhada das páginas
                 for num_pag in range(total_paginas):
                     pagina = doc[num_pag]
                     pagina_rect = pagina.rect
@@ -301,14 +310,12 @@ class ApiValidador:
                     if rotacao != 0:
                         erros.append(f"Página {num_pag + 1} está rotacionada ({rotacao}°). Fundamento Legal: Anexo I do Decreto nº 10.278/2020.")
 
-                    # Extração e contagem de texto vetorial
                     texto_pagina = pagina.get_text()
                     if texto_pagina and len(texto_pagina.strip()) > 0:
                         tem_texto_vetorial = True
                         total_caracteres_vetoriais += len(texto_pagina.strip())
                         texto_completo_ocr += f" {texto_pagina}"
 
-                    # Verificação de Texto Invisível (Render Mode 3 - Camada OCR embutida pós-scan)
                     text_page = pagina.get_text("rawdict")
                     for block in text_page.get("blocks", []):
                         for line in block.get("lines", []):
@@ -371,20 +378,15 @@ class ApiValidador:
 
                 txt_lower = texto_completo_ocr.lower()
 
-                # Reconhecimento no texto sobre assinaturas e validações
                 if "icp-brasil" in txt_lower or "docxpress" in txt_lower or "assinado digitalmente" in txt_lower or "protocolo assinatura digital" in txt_lower:
                     eh_assinado_digitalmente = True
 
-                # Extração de Metadados de Origem (Software vs Hardware)
                 metadados_exif = self._extrair_metadados_exiftool(caminho)
                 criador_software = (str(metadados_exif.get("Creator", "")) + " " + str(metadados_exif.get("Producer", "")) + " " + str(metadados_exif.get("Software", ""))).upper()
 
                 possui_rastro_hardware = any(hw in criador_software for hw in hardwares_scanners)
-                possui_rastro_software = any(sw in criador_software for sw in softwares_geradores)
 
-                # -----------------------------------------------------------------
-                # DECISÃO ESTRUTURAL DE ORIGEM (MOTOR DOS 3 PILARES)
-                # -----------------------------------------------------------------
+                # MOTOR DOS 3 PILARES
                 if eh_assinado_digitalmente:
                     eh_nato_digital = True
                 elif total_caracteres_vetoriais >= 150 and not tem_camada_ocr_invisivel and not possui_rastro_hardware:
@@ -394,13 +396,11 @@ class ApiValidador:
                 else:
                     eh_nato_digital = tem_texto_vetorial and not tem_camada_ocr_invisivel
 
-                # Resolução DPI final
                 dpi_final_str = "Nativo (Vetor)" if eh_nato_digital else str(dpi_minimo_encontrado if dpi_minimo_encontrado != 9999 else "N/A")
                 
                 if not eh_nato_digital and dpi_minimo_encontrado < dpi_minimo:
                     erros.append(f"Resolução insuficiente ({dpi_minimo_encontrado} DPI encontrado vs {dpi_minimo} DPI exigido). Fundamento Legal: Anexo I do Decreto nº 10.278/2020.")
 
-                # Classificação por tipo documental
                 if "vacina" in txt_lower or "rubéola" in txt_lower or "rubeola" in txt_lower or "imunização" in txt_lower:
                     tipo_documento = "Comprovante / Carteira de Vacinação de Rubéola"
                 elif "historico escolar" in txt_lower or "histórico escolar" in txt_lower:
@@ -418,7 +418,6 @@ class ApiValidador:
                 elif "energia elétrica" in txt_lower or "celesc" in txt_lower or "danf3e" in txt_lower or "comprovante de residência" in txt_lower or "água" in txt_lower or "sanear" in txt_lower or "casan" in txt_lower:
                     tipo_documento = "Comprovante de Residência"
 
-                # Verificação de PDF/A e Softwares Proibidos
                 eh_pdfa = False
                 if "pdfa" in str(metadados_exif.get("GTS_PDFAConformance", "")).lower() or \
                    "pdfa" in str(metadados_exif.get("PDFVersion", "")).lower() or \
@@ -475,6 +474,20 @@ class ApiValidador:
                     "erros": [f"Falha ao processar o ficheiro PDF: {msg_erro}"],
                     "matriz_anexo_ii": []
                 })
+
+            # 2. Notifica o progresso do arquivo atual no frontend
+            if hasattr(self, '_window') and self._window:
+                try:
+                    self._window.evaluate_js(f"atualizarProgresso({idx}, {total_arquivos});")
+                except Exception as e:
+                    print(f"Aviso UI: {e}")
+
+        # 3. Finaliza a barra no frontend
+        if hasattr(self, '_window') and self._window:
+            try:
+                self._window.evaluate_js("finalizarProgresso();")
+            except Exception as e:
+                print(f"Aviso UI: {e}")
 
         return resultados
 

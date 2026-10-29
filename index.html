@@ -40,7 +40,6 @@
     .erros-list { font-size: 0.8rem; color: #dc2626; margin: 6px 0 0 0; padding-left: 16px; line-height: 1.3; }
     .doc-type { font-size: 0.78rem; color: #64748b; margin-top: 4px; }
 
-    /* Responsividade Adicional para Telas Menores e Janelas Compactas */
     @media (max-width: 768px) {
       body { padding: 12px; }
       .controls { flex-direction: column; align-items: flex-start; gap: 12px; }
@@ -49,6 +48,42 @@
       .botoes-acao { width: 100%; display: flex; flex-direction: column; margin-left: 0 !important; gap: 10px; }
       .botoes-acao button { width: 100%; }
       th, td { padding: 8px; font-size: 0.8rem; }
+    }
+
+    .progress-card {
+      background: #fff;
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #334155;
+    }
+    .progress-percent {
+      color: #2563eb;
+      font-weight: 700;
+    }
+    .progress-track {
+      width: 100%;
+      background: #f1f5f9;
+      border-radius: 999px;
+      height: 10px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      background: #2563eb;
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      transition: width 0.3s ease;
     }
   </style>
 </head>
@@ -75,8 +110,19 @@
       </div>
 
       <div class="botoes-acao" style="margin-left: auto; display: flex; gap: 10px;">
-        <button class="btn" onclick="selecionarEValidar()">Selecionar Documentos PDF</button>
+        <button id="btnSelecionar" class="btn" onclick="selecionarEValidar()">Selecionar Documentos PDF</button>
         <button id="btnLaudo" class="btn btn-secondary" onclick="exportarLaudo()" disabled>📄 Exportar Laudo em PDF</button>
+      </div>
+    </div>
+
+    <!-- Barra de Progresso -->
+    <div id="containerProgresso" class="progress-card" style="display: none;">
+      <div class="progress-header">
+        <span id="textoProgresso">Iniciando análise de documentos...</span>
+        <span id="porcentagemProgresso" class="progress-percent">0%</span>
+      </div>
+      <div class="progress-track">
+        <div id="barraProgresso" class="progress-fill"></div>
       </div>
     </div>
 
@@ -107,93 +153,85 @@
     let ultimosResultados = [];
 
     async function selecionarEValidar() {
-      // Captura dos elementos e configurações da interface
       const dpiMinimo = parseInt(document.getElementById('dpiInput')?.value) || 300;
       const exigirPdfa = document.getElementById('pdfaCheck') ? document.getElementById('pdfaCheck').checked : false;
       const auditarMetadados = document.getElementById('metadadosCheck') ? document.getElementById('metadadosCheck').checked : false;
       
       const tabela = document.getElementById('resultadoTabela');
-      const btnLaudo = document.getElementById('btnLaudo');
 
-      // 1. Seleção dos ficheiros PDF através do PyWebView
-      const arquivos = await pywebview.api.selecionar_arquivos();
-      if (!arquivos || arquivos.length === 0) return;
+      try {
+        const arquivos = await pywebview.api.selecionar_arquivos();
+        if (!arquivos || arquivos.length === 0) return;
 
-      // 2. Feedback visual durante o processamento
-      tabela.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px;">Lendo e analisando documento(s) com OCR e checagens legais... Aguarde.</td></tr>';
-      
-      // 3. Chamada da API Python enviando os parâmetros de validação
-      ultimosResultados = await pywebview.api.analisar_documentos(arquivos, auditarMetadados, exigirPdfa, dpiMinimo);
-      
-      if (!ultimosResultados || ultimosResultados.length === 0) {
-        tabela.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px;">Nenhum resultado retornado.</td></tr>';
-        return;
-      }
+        iniciarProgresso(arquivos.length);
 
-      let htmlRows = '';
-
-      // 4. Construção das linhas alinhadas com as 6 colunas do cabeçalho
-      for (const res of ultimosResultados) {
-        const badgeStatus = res.aprovado 
-          ? '<span class="badge badge-success">APROVADO</span>' 
-          : '<span class="badge badge-danger">REPROVADO</span>';
-
-        // Lógica para exibir "Indefinido" na cor caso ocorra falha de leitura
-        let badgeCor = '';
-        if (res.modo_cor === 'Indefinido') {
-            badgeCor = '<span class="badge badge-orange">Indefinido</span>';
-        } else if (res.colorido) {
-            badgeCor = '<span class="badge badge-blue">Colorido</span>';
-        } else {
-            badgeCor = '<span class="badge badge-gray">P&B / Cinza</span>';
+        ultimosResultados = await pywebview.api.analisar_documentos(arquivos, auditarMetadados, exigirPdfa, dpiMinimo);
+        
+        if (!ultimosResultados || ultimosResultados.length === 0) {
+          tabela.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px;">Nenhum resultado retornado.</td></tr>';
+          return;
         }
 
-        // Formatação do selo de Origem (Nato-Digital, Escaneado ou Erro)
-        let badgeOrigem = '';
-        if (res.origem === 'Nato-Digital') {
-            badgeOrigem = '<span class="badge badge-purple">Nato-Digital</span>';
-        } else if (res.origem === 'Erro') {
-            badgeOrigem = '<span class="badge badge-danger">Erro</span>';
-        } else {
-            badgeOrigem = '<span class="badge badge-orange">Escaneado</span>';
+        let htmlRows = '';
+
+        for (const res of ultimosResultados) {
+          const badgeStatus = res.aprovado 
+            ? '<span class="badge badge-success">APROVADO</span>' 
+            : '<span class="badge badge-danger">REPROVADO</span>';
+
+          let badgeCor = '';
+          if (res.modo_cor === 'Indefinido') {
+              badgeCor = '<span class="badge badge-orange">Indefinido</span>';
+          } else if (res.colorido) {
+              badgeCor = '<span class="badge badge-blue">Colorido</span>';
+          } else {
+              badgeCor = '<span class="badge badge-gray">P&B / Cinza</span>';
+          }
+
+          let badgeOrigem = '';
+          if (res.origem === 'Nato-Digital') {
+              badgeOrigem = '<span class="badge badge-purple">Nato-Digital</span>';
+          } else if (res.origem === 'Erro') {
+              badgeOrigem = '<span class="badge badge-danger">Erro</span>';
+          } else {
+              badgeOrigem = '<span class="badge badge-orange">Escaneado</span>';
+          }
+
+          const badgePdfa = res.pdfa 
+            ? '<span class="badge badge-success">Sim</span>' 
+            : '<span class="badge badge-gray">Não</span>';
+
+          let detalhesErros = '';
+          if (res.erros && res.erros.length > 0) {
+            detalhesErros = `<ul class="erros-list" style="margin-top:5px; color:#D33833;">${res.erros.map(e => `<li>${e}</li>`).join('')}</ul>`;
+          }
+
+          const dpiTexto = res.dpi === "Nativo (Vetor)" ? res.dpi : (res.dpi === "N/A" ? "N/A" : `${res.dpi} DPI`);
+          const totalPaginas = res.paginas || 0;
+
+          htmlRows += `
+            <tr>
+              <td>
+                <strong>${res.nome}</strong><br>
+                ${badgeOrigem}
+                <span class="doc-type">🏷️ <strong>${res.tipo_doc}</strong></span>
+                ${detalhesErros}
+              </td>
+              <td>${totalPaginas}</td>
+              <td><strong>${dpiTexto}</strong></td>
+              <td>${badgePdfa}</td>
+              <td>${badgeCor}</td>
+              <td>${badgeStatus}</td>
+            </tr>
+          `;
         }
 
-        const badgePdfa = res.pdfa 
-          ? '<span class="badge badge-success">Sim</span>' 
-          : '<span class="badge badge-gray">Não</span>';
+        tabela.innerHTML = htmlRows;
 
-        let detalhesErros = '';
-        if (res.erros && res.erros.length > 0) {
-          detalhesErros = `<ul class="erros-list" style="margin-top:5px; color:#D33833;">${res.erros.map(e => `<li>${e}</li>`).join('')}</ul>`;
-        }
-
-        // Evita exibir "N/A DPI" e mostra apenas "N/A" nos casos de erro
-        const dpiTexto = res.dpi === "Nativo (Vetor)" ? res.dpi : (res.dpi === "N/A" ? "N/A" : `${res.dpi} DPI`);
-        const totalPaginas = res.paginas || 0;
-
-        htmlRows += `
-          <tr>
-            <td>
-              <strong>${res.nome}</strong><br>
-              ${badgeOrigem}
-              <span class="doc-type">🏷️ <strong>${res.tipo_doc}</strong></span>
-              ${detalhesErros}
-            </td>
-            <td>${totalPaginas}</td>
-            <td><strong>${dpiTexto}</strong></td>
-            <td>${badgePdfa}</td>
-            <td>${badgeCor}</td>
-            <td>${badgeStatus}</td>
-          </tr>
-        `;
-      }
-
-      // Renderiza a estrutura montada na tabela HTML
-      tabela.innerHTML = htmlRows;
-
-      // Habilita o botão de exportação do laudo técnico
-      if (btnLaudo) {
-        btnLaudo.disabled = false;
+      } catch (err) {
+        console.error("Erro no processamento:", err);
+      } finally {
+        finalizarProgresso();
       }
     }
 
@@ -207,6 +245,42 @@
       if (gerado) {
         alert("Laudo de Conformidade MEC gerado com sucesso!");
       }
+    }
+
+    function iniciarProgresso(totalArquivos) {
+      const btnSelecionar = document.getElementById('btnSelecionar');
+      const btnLaudo = document.getElementById('btnLaudo');
+      const container = document.getElementById('containerProgresso');
+      
+      if (btnSelecionar) btnSelecionar.disabled = true;
+      if (btnLaudo) btnLaudo.disabled = true;
+
+      document.getElementById('barraProgresso').style.width = '0%';
+      document.getElementById('porcentagemProgresso').innerText = '0%';
+      document.getElementById('textoProgresso').innerText = `Iniciando análise de ${totalArquivos} documento(s)...`;
+      container.style.display = 'block';
+    }
+
+    function atualizarProgresso(atual, total) {
+      const percentual = Math.round((atual / total) * 100);
+      document.getElementById('barraProgresso').style.width = `${percentual}%`;
+      document.getElementById('porcentagemProgresso').innerText = `${percentual}%`;
+      document.getElementById('textoProgresso').innerText = `Analisando ${atual} de ${total} documento(s)...`;
+    }
+
+    function finalizarProgresso() {
+      const btnSelecionar = document.getElementById('btnSelecionar');
+      const btnLaudo = document.getElementById('btnLaudo');
+      
+      if (btnSelecionar) btnSelecionar.disabled = false;
+      
+      if (btnLaudo && ultimosResultados && ultimosResultados.length > 0) {
+        btnLaudo.disabled = false;
+      }
+
+      setTimeout(() => {
+        document.getElementById('containerProgresso').style.display = 'none';
+      }, 800);
     }
 </script>
 </body>
