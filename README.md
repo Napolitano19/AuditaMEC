@@ -1,80 +1,64 @@
-# Validador de Documentos - Exigências MEC
+# AuditaMEC — Validador de Documentos (Decreto nº 10.278/2020)
 
-Aplicação desktop desenvolvida em Python, com interface dinâmica em **HTML/CSS/JavaScript** utilizando `pywebview`, destinada à auditoria automatizada de documentos em PDF, considerando requisitos relacionados à digitalização e preservação de documentos.
+Aplicação desktop desenvolvida em Python, com interface dinâmica em **HTML, CSS e JavaScript** por meio do `pywebview`, destinada a apoiar a auditoria de documentos PDF relacionados aos requisitos de digitalização e preservação documental.
+
+> **Nota:** os resultados da aplicação servem como apoio técnico à conferência documental. A avaliação final deve considerar os procedimentos institucionais e os requisitos normativos aplicáveis.
 
 ---
 
 ## 🚀 Funcionalidades
 
-- 🔍 **Validação de DPI Efetivo Ajustável**  
-  Verifica se a resolução das imagens contidas no documento atende ao limite mínimo configurado (ex.: **300 DPI**).
+- **Motor de validação estrutural — 3 pilares (v2.3.0)**  
+  Analisa características do PDF para auxiliar na distinção entre documentos nato-digitais e escaneados, considerando:
+  - densidade de texto vetorial (referência indicada pelo projeto: mais de 150 caracteres);
+  - presença de camada de OCR invisível após digitalização, incluindo a análise de *Render Mode 3*;
+  - auditoria de metadados relacionados a software e hardware.
 
-- 🧬 **Classificação de Origem do Documento**  
-  Distingue automaticamente documentos **Nato-Digitais** (texto/vetores nativos) de documentos **Escaneados**.
+- **Barra de progresso dinâmica em lote (v2.4.0)**  
+  Apresenta o avanço do processamento em tempo real e bloqueia os botões pertinentes durante a execução para reduzir o risco de envios duplicados.
 
-- 🏷️ **Reconhecimento e Classificação de Documentos**  
-  Utiliza OCR para identificar e classificar diferentes tipos de documentos, como:
-  - Comprovantes de Vacinação de Rubéola
-  - Históricos Escolares
-  - Diplomas
-  - CNH
-  - Quitação Eleitoral
-  - Outros documentos acadêmicos e pessoais
+- **Validação de DPI efetivo ajustável**  
+  Analisa a resolução efetiva das imagens presentes no PDF e compara o resultado com o limite configurado, como 300 DPI.
 
-- 📜 **Auditoria do Padrão PDF/A**  
-  Verifica se os arquivos atendem às especificações relacionadas ao padrão **PDF/A**, utilizado para preservação digital de longo prazo.
+- **Reconhecimento e classificação documental**  
+  Utiliza OCR para auxiliar na identificação e classificação de documentos, como comprovantes de residência, carteiras de vacinação, históricos escolares, diplomas, CNH, quitação eleitoral e outros documentos acadêmicos e pessoais.
 
-- 🕵️ **Auditoria de Metadados e Marcas d'Água**  
-  Analisa os metadados dos arquivos utilizando o **ExifTool**, permitindo identificar:
-  - Marcas d'água de aplicativos de digitalização, como CamScanner;
-  - Rastros de softwares gráficos, como Photoshop, Illustrator e Canva;
-  - Informações relacionadas à origem e processamento do arquivo.
+- **Auditoria do padrão PDF/A**  
+  Verifica características relacionadas ao padrão PDF/A, voltado à preservação digital de longo prazo.
 
-- 📊 **Análise Multi-Documento em Lote**  
-  Permite processar vários arquivos simultaneamente, apresentando os resultados em uma tabela detalhada na interface.
+- **Auditoria de metadados e rastros de software**  
+  Utiliza o ExifTool para analisar metadados e auxiliar na identificação de marcas d’água ou informações associadas a ferramentas de digitalização e edição, como CamScanner, Photoshop, Canva e Illustrator.
 
-- 📄 **Exportação de Laudo Técnico**  
-  Gera um laudo técnico em PDF contendo o resultado da auditoria e o parecer de conformidade de cada documento analisado.
+- **Matriz do Anexo II — partes A e B**  
+  Reúne verificações de metadados associados aos requisitos do Decreto nº 10.278/2020, conforme as regras implementadas no projeto.
+
+- **Análise de múltiplos documentos em lote**  
+  Permite processar vários PDFs em uma mesma execução e consultar os resultados na interface.
+
+- **Exportação de laudo técnico em PDF**  
+  Gera um relatório consolidado com os resultados e o parecer da auditoria dos documentos analisados.
 
 ---
 
 ## 🛠️ Pré-requisitos
 
-### 1. Python
+- **Python 3.10 ou superior**, compatível com as dependências do projeto.
+- Dependências Python listadas em `requirements.txt`.
+- **Tesseract OCR**, necessário para os recursos de extração e reconhecimento de texto.
+- **ExifTool**, utilizado na análise de metadados.
 
-Recomenda-se utilizar uma versão recente do Python compatível com as dependências listadas em `requirements.txt`.
+O projeto pode utilizar os binários portáteis mantidos na raiz do repositório:
 
-### 2. Tesseract OCR
+```text
+Tesseract-OCR/
+ExifTool/
+```
 
-O **Tesseract OCR** é necessário para os recursos de extração de texto e validação de rotação dos documentos.
-
-#### Instalação no Windows
-
-1. Baixe e instale o Tesseract OCR para Windows.
-
-2. Instale preferencialmente no caminho padrão:
-
-   ```text
-   C:\Program Files\Tesseract-OCR
-   ```
-
-3. Alternativamente, os arquivos da instalação portátil podem ser colocados na pasta:
-
-   ```text
-   Tesseract-OCR/
-   ```
-
-   na raiz do projeto.
-
-4. Certifique-se de que o pacote de idioma português esteja disponível:
-
-   ```text
-   por.traineddata
-   ```
+Verifique também se o pacote de idioma português do Tesseract (`por.traineddata`) está disponível quando necessário.
 
 ---
 
-## 🚀 Como Rodar o Projeto
+## 🚀 Como executar o projeto
 
 ### 1. Clonar o repositório
 
@@ -104,152 +88,101 @@ pip install -r requirements.txt
 ### 5. Executar a aplicação
 
 ```bash
-python validador_dpi.py
+python AuditaMEC.py
 ```
 
 ---
 
-## 🧪 Teste do Ambiente
+## 📦 Gerando o executável (.exe)
 
-Após instalar todas as dependências, é possível executar o script de verificação do ambiente:
-
-```bash
-python test_environment.py
-```
-
-Esse teste pode ser utilizado para verificar se as principais dependências e recursos necessários para execução estão disponíveis.
-
----
-
-## 📦 Gerando o Executável
-
-Para gerar uma versão distribuível da aplicação utilizando **PyInstaller**, execute:
+Para gerar um executável único com o PyInstaller, incluindo a interface HTML e as pastas locais do ExifTool e do Tesseract OCR, execute no PowerShell, a partir da raiz do projeto:
 
 ```powershell
-pyinstaller --noconfirm --onedir --windowed `
+pyinstaller --noconsole --onefile `
   --add-data "index.html;." `
+  --add-data "ExifTool;ExifTool" `
   --add-data "Tesseract-OCR;Tesseract-OCR" `
-  --name "Validador_MEC" `
-  validador_dpi.py
+  AuditaMEC.py
 ```
 
-O executável será gerado dentro da pasta:
+O executável deverá ser gerado em:
 
 ```text
-dist/Validador_MEC/
+dist/AuditaMEC.exe
 ```
 
-### Estrutura esperada
-
-Após a compilação, a estrutura deverá conter os principais arquivos e diretórios necessários para execução da aplicação, incluindo:
-
-```text
-Validador_MEC/
-├── index.html
-├── Tesseract-OCR/
-├── validador_dpi.exe
-└── ...
-```
-
-> **Observação:** a presença da pasta `Tesseract-OCR` no pacote final permite que a aplicação utilize o mecanismo OCR sem depender necessariamente de uma instalação global do Tesseract no computador.
+> **Importante:** este comando documenta a configuração informada para o projeto. Confirme que os caminhos e a forma como o código localiza os binários funcionam corretamente no executável empacotado antes de distribuir a versão.
 
 ---
 
-## 📁 Estrutura do Projeto
+## 📁 Estrutura do projeto
 
-Uma estrutura típica do projeto é:
+Estrutura esperada, considerando os arquivos e diretórios descritos:
 
 ```text
 VALIDADOR_DE_DPI_MEC/
+├── ExifTool/
+│   └── exiftool.exe
 ├── Tesseract-OCR/
 ├── index.html
-├── validador_dpi.py
-├── test_environment.py
+├── AuditaMEC.py
 ├── requirements.txt
-├── README.md
-└── ...
+└── README.md
 ```
+
+Outros arquivos auxiliares de testes ou configuração podem existir no repositório e devem ser mantidos conforme utilizados pelo projeto.
 
 ---
 
-## 🔎 Fluxo de Auditoria
-
-De forma geral, o processo de validação segue o seguinte fluxo:
+## 🔎 Fluxo geral de auditoria
 
 ```text
 Documento PDF
-      │
-      ▼
+    │
+    ▼
 Leitura e análise do PDF
-      │
-      ├──► Origem do documento
-      │      ├── Nato-Digital
-      │      └── Escaneado
-      │
-      ├──► Análise de imagens
-      │      └── DPI efetivo
-      │
-      ├──► OCR
-      │      └── Reconhecimento do conteúdo
-      │
-      ├──► Metadados
-      │      └── ExifTool
-      │
-      ├──► PDF/A
-      │      └── Validação do padrão
-      │
-      └──► Regras de conformidade
-             │
-             ▼
-        Resultado da Auditoria
-             │
-             ▼
-       Laudo Técnico em PDF
+    │
+    ├──► Origem e estrutura do documento
+    │       ├── Texto/vetores nativos
+    │       ├── Conteúdo escaneado
+    │       └── Análise de OCR invisível
+    │
+    ├──► Análise de imagens e DPI efetivo
+    ├──► Extração/reconhecimento de texto (OCR)
+    ├──► Auditoria de metadados (ExifTool)
+    ├──► Verificações relacionadas a PDF/A
+    └──► Aplicação das regras de auditoria
+                │
+                ▼
+        Resultado da auditoria
+                │
+                ▼
+        Laudo técnico em PDF
 ```
 
 ---
 
-## ⚙️ Tecnologias Utilizadas
+## ⚙️ Tecnologias utilizadas
 
-- **Python**
-- **PyWebView**
-- **HTML / CSS / JavaScript**
-- **Tesseract OCR**
-- **ExifTool**
-- **PyInstaller**
-- **PDF/A**
-- **OCR**
-
----
-
-## 📄 Referência Normativa
-
-O projeto foi desenvolvido com foco na auditoria de documentos digitalizados e nos requisitos aplicáveis à digitalização, integridade, autenticidade e preservação de documentos.
-
-> **Importante:** os resultados apresentados pela aplicação devem ser considerados como apoio técnico à conferência documental. A validação final de conformidade deve considerar os procedimentos institucionais e os requisitos normativos aplicáveis.
+- Python
+- PyMuPDF (`fitz`)
+- PyWebView
+- HTML5, CSS3 e JavaScript
+- Tesseract OCR
+- ExifTool
+- ReportLab
+- PyInstaller
 
 ---
 
-## 👨‍💻 Execução Rápida
+## 📚 Referência normativa
 
-Para um ambiente Windows já configurado:
+O projeto tem como referência o **Decreto Federal nº 10.278/2020**, relacionado aos requisitos técnicos para digitalização de documentos e à produção de efeitos legais equivalentes aos dos documentos originais, conforme aplicável.
 
-```powershell
-git clone https://github.com/Napolitano19/VALIDADOR_DE_DPI_MEC.git
-cd VALIDADOR_DE_DPI_MEC
-
-python -m venv venv
-.\venv\Scripts\activate
-
-pip install -r requirements.txt
-
-python test_environment.py
-python validador_dpi.py
-```
+A ferramenta auxilia na análise técnica dos arquivos, mas seus resultados não substituem a avaliação dos responsáveis nem a verificação dos requisitos normativos e institucionais aplicáveis a cada caso.
 
 ---
 
 ## 📌 Repositório
 
-**GitHub:**  
-https://github.com/Napolitano19/VALIDADOR_DE_DPI_MEC
+**GitHub:** [Napolitano19/VALIDADOR_DE_DPI_MEC](https://github.com/Napolitano19/VALIDADOR_DE_DPI_MEC)
