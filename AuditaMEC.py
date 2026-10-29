@@ -261,6 +261,8 @@ class ApiValidador:
         """Executa a verificação técnica completa em cada ficheiro PDF fornecido."""
         resultados = []
         softwares_suspeitos = ["PHOTOSHOP", "CANVA", "ILLUSTRATOR", "CORELDRAW", "GIMP", "INKSCAPE"]
+        softwares_geradores = ["JASPERREPORTS", "ITEXT", "REPORTLAB", "PDFIUM", "MICROSOFT", "INDESIGN", "BIRT", "APACHE FOP", "ACROBAT"]
+        hardwares_scanners = ["EPSON", "CANON", "HP DESKJET", "XEROX", "KONICA", "MINOLTA", "RICOH", "CAMSCANNER", "TESSERACT", "SCANNER", "FUJITSU"]
 
         for caminho in caminhos:
             nome_arquivo = unicodedata.normalize('NFC', os.path.basename(caminho))
@@ -273,9 +275,11 @@ class ApiValidador:
                 
                 tem_imagem_escaneada_grande = False
                 tem_texto_vetorial = False
+                total_caracteres_vetoriais = 0
+                tem_camada_ocr_invisivel = False
                 eh_assinado_digitalmente = False
                 
-                # Detecção nativa de contêiner de assinatura digital no PDF (protegido contra versão do PyMuPDF)
+                # Deteção nativa de contêiner de assinatura digital
                 if hasattr(doc, 'get_sig_flags'):
                     try:
                         if doc.get_sig_flags() > 0:
@@ -288,7 +292,7 @@ class ApiValidador:
                 tipo_documento = "Geral / Desconhecido"
                 texto_completo_ocr = ""
 
-                # 1. Análise das páginas
+                # 1. Análise detalhada das páginas (Estrutura e Camadas)
                 for num_pag in range(total_paginas):
                     pagina = doc[num_pag]
                     pagina_rect = pagina.rect
@@ -297,10 +301,20 @@ class ApiValidador:
                     if rotacao != 0:
                         erros.append(f"Página {num_pag + 1} está rotacionada ({rotacao}°). Fundamento Legal: Anexo I do Decreto nº 10.278/2020.")
 
+                    # Extração e contagem de texto vetorial
                     texto_pagina = pagina.get_text()
-                    if texto_pagina and len(texto_pagina.strip()) > 50:
+                    if texto_pagina and len(texto_pagina.strip()) > 0:
                         tem_texto_vetorial = True
+                        total_caracteres_vetoriais += len(texto_pagina.strip())
                         texto_completo_ocr += f" {texto_pagina}"
+
+                    # Verificação de Texto Invisível (Render Mode 3 - Camada OCR embutida pós-scan)
+                    text_page = pagina.get_text("rawdict")
+                    for block in text_page.get("blocks", []):
+                        for line in block.get("lines", []):
+                            for span in line.get("spans", []):
+                                if span.get("render", 0) == 3:
+                                    tem_camada_ocr_invisivel = True
 
                     lista_imagens = pagina.get_images()
                     
@@ -313,11 +327,9 @@ class ApiValidador:
                             xref = img[0]
                             pix = fitz.Pixmap(doc, xref)
                             
-                            # Ignora máscaras de transparência sem espaço de cor
                             if pix.colorspace is None:
                                 continue
 
-                            # Obtém o retângulo real onde a imagem é desenhada na página
                             rects = pagina.get_image_rects(xref)
                             area_cobertura = 0.0
                             
@@ -334,7 +346,6 @@ class ApiValidador:
                                 dpi_x = round((pix.width / pagina_rect.width) * 72) if pagina_rect.width > 0 else 0
                                 dpi_y = round((pix.height / pagina_rect.height) * 72) if pagina_rect.height > 0 else 0
 
-                            # Considera imagem escaneada de folha física apenas se ocupar mais de 50% da área da página
                             if pix.width > 400 and pix.height > 400 and area_cobertura > 0.50:
                                 tem_imagem_escaneada_grande = True
 
@@ -354,40 +365,42 @@ class ApiValidador:
                             elif cor_img == "Escala de Cinza" and modo_cor_final != "Colorido":
                                 modo_cor_final = "Escala de Cinza"
 
-                            # Tesseract OCR para documentos sem texto vetorial
-                            if not tem_texto_vetorial or tem_imagem_escaneada_grande:
-                                try:
-                                    img_pil = Image.frombytes("RGB", [pix_convertido.width, pix_convertido.height], pix_convertido.samples)
-                                    texto_ocr = pytesseract.image_to_string(img_pil, lang='por+eng')
-                                    texto_completo_ocr += f" {texto_ocr}"
-                                except Exception as err_ocr:
-                                    print(f"Aviso no OCR da pág {num_pag + 1}: {str(err_ocr)}")
-
                         except Exception as img_err:
                             print(f"Aviso ao processar imagem {img[0]}: {str(img_err)}")
                             continue
 
                 txt_lower = texto_completo_ocr.lower()
 
-                # Reconhecimento de assinaturas digitais ICP-Brasil e plataformas de validação
+                # Reconhecimento no texto sobre assinaturas e validações
                 if "icp-brasil" in txt_lower or "docxpress" in txt_lower or "assinado digitalmente" in txt_lower or "protocolo assinatura digital" in txt_lower:
                     eh_assinado_digitalmente = True
 
-                # Definição final de Origem
+                # Extração de Metadados de Origem (Software vs Hardware)
+                metadados_exif = self._extrair_metadados_exiftool(caminho)
+                criador_software = (str(metadados_exif.get("Creator", "")) + " " + str(metadados_exif.get("Producer", "")) + " " + str(metadados_exif.get("Software", ""))).upper()
+
+                possui_rastro_hardware = any(hw in criador_software for hw in hardwares_scanners)
+                possui_rastro_software = any(sw in criador_software for sw in softwares_geradores)
+
+                # -----------------------------------------------------------------
+                # DECISÃO ESTRUTURAL DE ORIGEM (MOTOR DOS 3 PILARES)
+                # -----------------------------------------------------------------
                 if eh_assinado_digitalmente:
+                    eh_nato_digital = True
+                elif total_caracteres_vetoriais >= 150 and not tem_camada_ocr_invisivel and not possui_rastro_hardware:
                     eh_nato_digital = True
                 elif tem_imagem_escaneada_grande:
                     eh_nato_digital = False
                 else:
-                    eh_nato_digital = tem_texto_vetorial
+                    eh_nato_digital = tem_texto_vetorial and not tem_camada_ocr_invisivel
 
-                # 2. Resolução DPI
+                # Resolução DPI final
                 dpi_final_str = "Nativo (Vetor)" if eh_nato_digital else str(dpi_minimo_encontrado if dpi_minimo_encontrado != 9999 else "N/A")
                 
                 if not eh_nato_digital and dpi_minimo_encontrado < dpi_minimo:
                     erros.append(f"Resolução insuficiente ({dpi_minimo_encontrado} DPI encontrado vs {dpi_minimo} DPI exigido). Fundamento Legal: Anexo I do Decreto nº 10.278/2020.")
 
-                # 3. Classificação por tipo documental
+                # Classificação por tipo documental
                 if "vacina" in txt_lower or "rubéola" in txt_lower or "rubeola" in txt_lower or "imunização" in txt_lower:
                     tipo_documento = "Comprovante / Carteira de Vacinação de Rubéola"
                 elif "historico escolar" in txt_lower or "histórico escolar" in txt_lower:
@@ -402,10 +415,10 @@ class ApiValidador:
                     tipo_documento = "Carteira de Identidade / CNH"
                 elif "militar" in txt_lower or "reservista" in txt_lower:
                     tipo_documento = "Comprovante Militar"
+                elif "energia elétrica" in txt_lower or "celesc" in txt_lower or "danf3e" in txt_lower or "comprovante de residência" in txt_lower or "água" in txt_lower or "sanear" in txt_lower or "casan" in txt_lower:
+                    tipo_documento = "Comprovante de Residência"
 
-                # 4. Metadados e verificação de PDF/A
-                metadados_exif = self._extrair_metadados_exiftool(caminho)
-                
+                # Verificação de PDF/A e Softwares Proibidos
                 eh_pdfa = False
                 if "pdfa" in str(metadados_exif.get("GTS_PDFAConformance", "")).lower() or \
                    "pdfa" in str(metadados_exif.get("PDFVersion", "")).lower() or \
@@ -421,9 +434,8 @@ class ApiValidador:
                 if "CAMSCANNER" in txt_lower or "CAMSCANNER" in autor or "CAMSCANNER" in criador:
                     erros.append("Marca d'água / aplicativo de terceiro detectado ('CAMSCANNER'). Fundamento Legal: Art. 4º do Decreto nº 10.278/2020.")
 
-                software_usado = (str(metadados_exif.get("Software", "")) + " " + str(metadados_exif.get("Producer", ""))).upper()
                 for sw in softwares_suspeitos:
-                    if sw in software_usado:
+                    if sw in criador_software:
                         erros.append(f"Uso de editor gráfico/software não autorizado detectado ({sw}). Fundamento Legal: Art. 4º do Decreto nº 10.278/2020.")
 
                 doc.close()
@@ -447,10 +459,7 @@ class ApiValidador:
                 })
 
             except Exception as e:
-                msg_erro = str(e)
-                if isinstance(msg_erro, str):
-                    msg_erro = unicodedata.normalize('NFC', msg_erro)
-
+                msg_erro = unicodedata.normalize('NFC', str(e)) if isinstance(str(e), str) else str(e)
                 resultados.append({
                     "nome": nome_arquivo,
                     "caminho": caminho,
